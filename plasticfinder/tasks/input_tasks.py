@@ -1,6 +1,34 @@
-from eolearn.io import S2L1CWCSInput, SentinelHubInputTask, S2L2AWCSInput
+from eolearn.io import SentinelHubInputTask
+from eolearn.core import FeatureType
+from sentinelhub import DataCollection, SHConfig
+from datetime import timedelta
 
-input_task = S2L2AWCSInput('BANDS-S2-L1C', resx='10m', resy='10m', maxcc=0.8)
-add_l2a = S2L2AWCSInput(layer='BANDS-S2-L2A')
-true_color  = S2L1CWCSInput('TRUE-COLOR-S2-L1C')
-SENT_SAT_CLASSICATIONS = S2L2AWCSInput("SCENE_CLASSIFICATION")
+config = SHConfig()
+resolution = 10
+max_cloud_coverage = 0.8
+time_difference = timedelta(hours=8)
+n_threads = 8
+
+input_task = SentinelHubInputTask(
+    data_collection=DataCollection.SENTINEL2_L1C,
+    bands=['B01', 'B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B8A', 'B09', 'B10', 'B11', 'B12'],
+    bands_feature=(FeatureType.DATA, 'BANDS-S2-L1C'),
+    additional_data=[(FeatureType.MASK, 'IS_DATA')],
+    resolution=resolution,
+    maxcc=max_cloud_coverage,
+    time_difference=time_difference,
+    config=config,
+    max_threads=n_threads
+)
+
+add_l2a = SentinelHubInputTask(
+    data_collection=DataCollection.SENTINEL2_L2A,
+    bands=['B01', 'B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B8A', 'B09', 'B11', 'B12'],
+    bands_feature=(FeatureType.DATA, 'BANDS-L2-L2A'),
+    additional_data=[(FeatureType.MASK, 'SCL')],
+    resolution=resolution,
+    maxcc=max_cloud_coverage,
+    time_difference=time_difference,
+    config=config,
+    max_threads=n_threads
+)
