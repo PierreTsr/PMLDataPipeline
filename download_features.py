@@ -1,11 +1,12 @@
-'''This script downloads and processes modeling traning data 
+"""
+   This script downloads and processes modeling training data
    in to a format that is ready for the modeling script.
    To run use the following command
 
    python download_features -feature_list=data/features.csv -o output_dir
-   
+
    This will generate EOPatches with each training data point at the center and will
-   create a folder for each that contains the EOPatch and some plot's to help contextualize 
+   create a folder for each that contains the EOPatch and some plot's to help contextualize
    the datapoint.
 
    The expected format for the input file is a csv with one column per feature
@@ -13,16 +14,16 @@
    Lat, Lon, date, label
 
    Where label is on of "Debris", "Water", "Spume", "Timber", "Pumice", "Seaweed"
-'''
+"""
 
 import pandas as pd 
 import geopanads as gp
 import argparse
 from plasticfinder.tasks.combined_masks import CombineMask
-from plasticfinder.tasks.cloud_classifier import cloud_classifier_task
+from plasticfinder.tasks.cloud_classifier import get_cloud_classifier_task
 from plasticfinder.tasks.water_detection import WaterDetector
-from plasticfinder.tasks.ndwi import ndwi_task
-from plasticfinder.tasks.ndvi import ndvi_task
+from plasticfinder.tasks.ndwi import get_ndwi_task
+from plasticfinder.tasks.ndvi import get_ndvi_task
 from plasticfinder.tasks.fdi import CalcFDI
 from plasticfinder.tasks.input_tasks import input_task,true_color,add_l2a
 from plasticfinder.tasks.local_Norm import LocalNormalization
@@ -30,7 +31,7 @@ from eolearn.core import SaveTask, LinearWorkflow, LoadTask
 from eolearn.core.constants import OverwritePermission
 
 
-def load_fetures_from_file(file, buffer_x=500, buffer_y=500):
+def load_features_from_file(file, buffer_x=500, buffer_y=500):
     '''A function to load in the list of feature targets and generates a buffer around each of the specified extent
     
             Parameters:
