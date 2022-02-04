@@ -1,11 +1,11 @@
-from eolearn.core import EOTask
+from eolearn.core import EOPatch
 from plasticfinder.tasks.combined_masks import CombineMask
 from plasticfinder.tasks.cloud_classifier import get_cloud_classifier_task
 from plasticfinder.tasks.water_detection import WaterDetector
 from plasticfinder.tasks.ndwi import get_ndwi_task
 from plasticfinder.tasks.ndvi import get_ndvi_task
 from plasticfinder.tasks.fdi import CalcFDI
-from plasticfinder.tasks.input_tasks import input_task
+from plasticfinder.tasks.input_tasks import input_task, local_input_task
 from plasticfinder.tasks.local_norm import LocalNormalization
 from plasticfinder.tasks.detect_plastics import DetectPlastics
 from plasticfinder.class_deffs import catMap, colors
@@ -19,6 +19,7 @@ from eolearn.core.constants import OverwritePermission
 from plasticfinder.viz import plot_ndvi_fid_plots, plot_masks_and_vals
 from sentinelhub import UtmZoneSplitter, BBoxSplitter, BBox, CRS
 from shapely.geometry import box, Polygon, shape
+from multiprocessing import Pool
 
 
 def get_and_process_patch(bounds, time_range, base_dir, index):
@@ -52,7 +53,7 @@ def get_and_process_patch(bounds, time_range, base_dir, index):
     combine_mask = CombineMask()
     local_norm = LocalNormalization()
 
-    fetch_workflow = LinearWorkflow(input_task,
+    fetch_workflow = LinearWorkflow(local_input_task,
                                     # add_l2a, # removing useless download to save SH processing units
                                     get_ndvi_task(),
                                     get_ndwi_task(),
@@ -64,9 +65,8 @@ def get_and_process_patch(bounds, time_range, base_dir, index):
                                     save)
 
     feature_result = fetch_workflow.execute({
-        input_task: {
+        local_input_task: {
             'bbox': BBox(bounds, CRS.WGS84),
-            'time_interval': time_range
         },
         combine_mask: {
             'use_water': False
@@ -135,26 +135,25 @@ def download_region(base_dir, minx, miny, maxx, maxy, time_range, target_tiles=N
         index = row['index']
         ax.text(geo.centroid.x, geo.centroid.y, f'{index}', ha='center', va='center')
 
-    cx.add_basemap(ax=ax)
+    cx.add_basemap(ax=ax, crs='EPSG:3857')
     plt.savefig(f'{base_dir}/region.png')
 
     total = len(target_tiles) if target_tiles else len(bbox_list)
+    pool = Pool(12)
+    args = [(idx, bbox, time_range, base_dir) for idx, bbox in enumerate(bbox_list)]
+    pool.starmap(patch_process, args)
 
-    for index, patch_box in enumerate(bbox_list):
-        if target_tiles and index not in target_tiles:
-            continue
-        print("Getting patch ", index, ' of ', total)
-        try:
-            patch = get_and_process_patch(patch_box, time_range, base_dir, index)
-            fig, ax = plot_masks_and_vals(patch)
-            fig.savefig(f'{base_dir}/feature_{index}/bands.png')
-            plt.close(fig)
 
-            fig, ax = plot_ndvi_fid_plots(patch)
-            fig.savefig(f'{base_dir}/feature_{index}/ndvi_fdi.png')
-            plt.close(fig)
-        except:
-            print("Failed to process ", index)
+def patch_process(index, patch_box, time_range, base_dir):
+    print("Getting patch ", index, ' of ', 400)
+    patch = get_and_process_patch(patch_box, time_range, base_dir, index)
+    fig, ax = plot_masks_and_vals(patch)
+    fig.savefig(f'{base_dir}/feature_{index}/bands.png')
+    plt.close(fig)
+
+    fig, ax = plot_ndvi_fid_plots(patch)
+    fig.savefig(f'{base_dir}/feature_{index}/ndvi_fdi.png')
+    plt.close(fig)
 
 
 def predict_using_model(patch_dir, model_file, method, window_size):
