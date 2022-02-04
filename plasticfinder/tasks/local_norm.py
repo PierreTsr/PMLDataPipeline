@@ -30,7 +30,7 @@ class LocalNormalization(EOTask):
 
     @staticmethod
     def normalize(data, mask, method='mean', axis=[1, 4], window_size=2):
-        masked_data = np.where(np.invert(mask), data, np.nan)
+        masked_data = np.where(mask, data, np.nan)
 
         result = np.zeros(shape=masked_data.shape)
         norm_scene = np.zeros(shape=result.shape)
@@ -54,17 +54,25 @@ class LocalNormalization(EOTask):
 
     def execute(self, eopatch, method='mean', window_size=100):
         valid_mask = np.copy(eopatch.mask['FULL_MASK'])
+        if not np.all(valid_mask):
+            eopatch.add_feature(FeatureType.DATA, 'NORM_FDI', np.zeros(eopatch.data['FDI'].shape))
+            eopatch.add_feature(FeatureType.DATA, 'NORM_NDVI', np.zeros(eopatch.data['NDVI'].shape))
+            eopatch.add_feature(FeatureType.DATA, 'MEAN_FDI', np.zeros(eopatch.data['FDI'].shape))
+            eopatch.add_feature(FeatureType.DATA, 'MEAN_NDVI', np.zeros(eopatch.data['NDVI'].shape))
+            eopatch.add_feature(FeatureType.DATA, 'NORM_BANDS', np.zeros(eopatch.data['BANDS-S2-L1C'].shape))
+            eopatch.add_feature(FeatureType.DATA, 'MEAN_BANDS', np.zeros(eopatch.data['BANDS-S2-L1C'].shape))
+        else:
+            normed_ndvi, m_ndvi = LocalNormalization.normalize(eopatch.data['NDVI'], valid_mask, method=method, window_size=window_size)
 
-        normed_ndvi, m_ndvi = self.normalize(eopatch.data['NDVI'], valid_mask, method=method, window_size=window_size)
+            normed_fdi, m_fdi = LocalNormalization.normalize(eopatch.data['FDI'], valid_mask, method=method, window_size=window_size)
+            normed_bands, m_bands = LocalNormalization.normalize(eopatch.data['BANDS-S2-L1C'], valid_mask, method=method, window_size=window_size)
 
-        normed_fdi, m_fdi = self.normalize(eopatch.data['FDI'], valid_mask, method=method, window_size=window_size)
-        normed_bands = self.normalize(eopatch.data['BANDS-S2-L1C'], eopatch.mask['WATER_MASK'], self.method)
-
-        eopatch.add_feature(FeatureType.DATA, 'NORM_FDI', normed_fdi)
-        eopatch.add_feature(FeatureType.DATA, 'NORM_NDVI', normed_ndvi)
-        eopatch.add_feature(FeatureType.DATA, 'MEAN_FDI', m_fdi.reshape(eopatch.data['FDI'].shape))
-        eopatch.add_feature(FeatureType.DATA, 'MEAN_NDVI', m_ndvi.reshape(eopatch.data['NDVI'].shape))
-        eopatch.add_feature(FeatureType.DATA, 'NORM_BANDS', normed_bands.reshape(eopatch.data['NDVI'].shape))
+            eopatch.add_feature(FeatureType.DATA, 'NORM_FDI', normed_fdi)
+            eopatch.add_feature(FeatureType.DATA, 'NORM_NDVI', normed_ndvi)
+            eopatch.add_feature(FeatureType.DATA, 'MEAN_FDI', m_fdi.reshape(eopatch.data['NDVI'].shape))
+            eopatch.add_feature(FeatureType.DATA, 'MEAN_NDVI', m_ndvi.reshape(eopatch.data['NDVI'].shape))
+            eopatch.add_feature(FeatureType.DATA, 'NORM_BANDS', normed_bands.reshape(eopatch.data['BANDS-S2-L1C'].shape))
+            eopatch.add_feature(FeatureType.DATA, 'MEAN_BANDS', m_bands.reshape(eopatch.data['BANDS-S2-L1C'].shape))
 
         return eopatch
 
