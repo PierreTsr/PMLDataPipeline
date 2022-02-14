@@ -37,4 +37,5 @@ if __name__ == "__main__":
         datetime.strptime(scene['timeRange'][1], "%Y-%m-%d")
     ]
 
-    download_region(scene['outputDir'], scene['minLon'], scene['minLat'], scene['maxLon'], scene['maxLat'], timeRange)
+    download_region(scene['outputDir'], scene['minLon'], scene['minLat'], scene['maxLon'], scene['maxLat'], timeRange,
+                    patches=(50, 50))

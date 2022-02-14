@@ -1,5 +1,4 @@
-from eolearn.core import EOTask
-from eolearn.core import FeatureType
+from eolearn.core import EOTask, FeatureType, AddFeatureTask
 import numpy as np
 
 DEFAULT_BAND_NAMES = ['B01',
@@ -30,6 +29,9 @@ class CalcFDI(EOTask):
             - band_names(str): the names of each band B01, B02 etc
     """
 
+    def __init__(self):
+        self.add_feature = AddFeatureTask((FeatureType.DATA, 'FDI'))
+
     @staticmethod
     def FDI(NIR, RE, SWIR):
         factor = 1.636
@@ -48,5 +50,5 @@ class CalcFDI(EOTask):
 
         FDI = self.FDI(NIR, RE, SWIR).reshape([bands.shape[0], bands.shape[1], bands.shape[2], 1])
 
-        eopatch.add_feature(FeatureType.DATA, 'FDI', FDI)
+        eopatch = self.add_feature(eopatch, FDI)
         return eopatch

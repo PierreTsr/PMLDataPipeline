@@ -1,33 +1,101 @@
 from eolearn.io import SentinelHubInputTask, ImportFromTiffTask
 from eolearn.core import FeatureType, EOTask, EOPatch, AddFeatureTask
-from sentinelhub import DataCollection, SHConfig
-from datetime import timedelta
+from sentinelhub import DataCollection, SHConfig, BBox, CRS
+from osgeo import gdal, osr
+from datetime import timedelta, datetime
+from pathlib import Path
 import numpy as np
+import re
+
+
+class NoTileFoundError(Exception):
+    pass
+
+
+def intersect(bbox_a, bbox_b):
+    bbox1, bbox2 = bbox_a.transform(CRS.WGS84), bbox_b.transform(CRS.WGS84)
+    x_intersect = max(bbox1.min_x, bbox2.min_x) < min(bbox1.max_x, bbox2.max_x)
+    y_intersect = max(bbox1.min_y, bbox2.min_y) < min(bbox1.max_y, bbox2.max_y)
+    return x_intersect and y_intersect
+
+
+def get_projcs_code(filename):
+    file = gdal.Open(str(filename))
+    proj = osr.SpatialReference(wkt=file.GetProjection())
+    code = proj.GetAuthorityName("projcs") + ":" + proj.GetAuthorityCode("projcs")
+    del file
+    return code
+
+
+def get_bbox(filename):
+    file = gdal.Open(str(filename))
+    code = get_projcs_code(filename)
+    min_x, x_res, x_skew, min_y, y_skew, y_res = file.GetGeoTransform()
+
+    max_x = min_x + (file.RasterXSize * x_res)
+    max_y = min_y + (file.RasterYSize * y_res)
+    del file
+    return BBox((min_x, min_y, max_x, max_y), code)
 
 
 class LocalInputTask(EOTask):
     def __init__(self, folder):
+        self.folder = folder
         self.import_task = ImportFromTiffTask(
             feature=(FeatureType.DATA, 'BANDS-S2-L1C'),
-            folder=folder,
-            image_dtype=np.uint16,
-            no_data_value=0,
+            timestamp_size=1,
+            image_dtype=np.float32,
+            no_data_value=.0,
         )
         self.mask_task = AddFeatureTask(feature=(FeatureType.MASK, "IS_DATA"))
+        self.true_color_task = AddFeatureTask((FeatureType.DATA, "TRUE_COLOR"))
 
-    def execute(self, eopatch=None, **kwargs):
-        if eopatch is None and "bbox" in kwargs:
-            eopatch = EOPatch(bbox=kwargs["bbox"])
-        eopatch = self.import_task(eopatch)
-        mask = eopatch.data["BANDS-S2-L1C"] != 0
+    def load_tile(self, eopatch, filename, timestamp):
+        eopatch = self.import_task(eopatch=eopatch, filename=str(filename))
+        eopatch.timestamp.append(timestamp)
+        mask = eopatch.data["BANDS-S2-L1C"] != .0
         mask = np.any(mask, axis=-1, keepdims=True)
         eopatch = self.mask_task(eopatch, mask)
+        eopatch = self.true_color_task(eopatch,
+                                       np.array(eopatch.data["BANDS-S2-L1C"][:, :, :, 1:4], dtype=np.float32) / 10000)
         return eopatch
 
 
-local_input_task = LocalInputTask(
-    "data/Ghana/S2B_MSIL1C_20181031T101139_N0206_R022_T30NZM_20181031T135633_s2resampled.tif"
-)
+    def execute(self, eopatch=None, **kwargs):
+        if eopatch is None:
+            eopatch = EOPatch()
+        if "bbox" in kwargs.keys():
+            eopatch.bbox = kwargs["bbox"]
+        if eopatch.bbox is None:
+            raise Exception("EOPatch needs to have a bounding box to import local files.")
+
+        projcs = eopatch.bbox.crs
+        timestamps = kwargs["timestamps"]
+        ids = kwargs["ids"]
+
+        print("Loading tile...")
+        for timestamp, id in zip(timestamps, ids):
+            s = "*" + id + "*.tif"
+            for path in Path(self.folder).rglob(s):
+                print("Found tile ", path)
+                target = eopatch.bbox
+                footprint = get_bbox(path)
+                if not intersect(target, footprint):
+                    continue
+
+                tile_projcs = CRS(get_projcs_code(path))
+                if projcs != tile_projcs:
+                    print(
+                        "Warning: a valid tile has been found but isn't in a compatible projection system. Ignoring tile.")
+                    continue
+
+                eopatch = self.load_tile(eopatch, path, timestamp)
+                print("Done")
+                return eopatch
+        raise NoTileFoundError()
+
+
+local_input_task = LocalInputTask("data/S2_L1C/")
 
 config = SHConfig()
 resolution = 10

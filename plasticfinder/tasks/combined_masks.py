@@ -1,5 +1,4 @@
-from eolearn.core import EOTask
-from eolearn.core import FeatureType
+from eolearn.core import EOTask, FeatureType, AddFeatureTask
 import numpy as np
 
 
@@ -11,12 +10,16 @@ class CombineMask(EOTask):
         use_water(bool): Include the water mask as part of the full mask. Default is false
     """
 
+    def __init__(self):
+        self.add_feature = AddFeatureTask((FeatureType.MASK, "FULL_MASK"))
+
     def execute(self, eopatch, use_water=True):
         if use_water:
-            combined = np.logical_or(np.invert(eopatch.mask['WATER_MASK']).astype(bool),
-                                     eopatch.mask['CLM_S2C'].astype(bool))
+            combined = np.logical_and(eopatch.mask['WATER_MASK'].astype(bool),
+                                      eopatch.mask['IS_DATA'].astype(bool),
+                                      np.invert(eopatch.mask['CLM_S2C'].astype(bool)))
         else:
-            combined = eopatch.mask['CLM_S2C'].astype(bool)
-        eopatch.add_feature(FeatureType.MASK, 'FULL_MASK',
-                            combined)
+            combined = np.logical_and(eopatch.mask['IS_DATA'].astype(bool),
+                                      np.invert(eopatch.mask['CLM_S2C'].astype(bool)))
+        eopatch = self.add_feature(eopatch, combined)
         return eopatch

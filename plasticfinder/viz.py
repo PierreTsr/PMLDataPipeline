@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from plasticfinder.class_deffs import catMap, colors, cols_rgb
-from eolearn.core import LoadTask
+from eolearn.core import LoadTask, FeatureType
 from pathlib import Path
 
 
@@ -26,43 +26,43 @@ def plot_masks_and_vals(patch, points=None, scene=0):
     axs = axs.flatten()
 
     axs[0].set_title("True Color")
-    axs[0].imshow(patch.data['BANDS-S2-L1C'][scene, :, :, 1:4] / 10000)
+    patch.plot(feature=(FeatureType.DATA, "TRUE_COLOR"), axes=axs[0], rgb=[2, 1, 0])
 
     axs[1].set_title("NDVI")
-    axs[1].imshow(patch.data['NDVI'][scene, :, :, 0])
+    patch.plot(feature=(FeatureType.DATA, 'NDVI'), axes=axs[1], channels=[0], times=[scene])
 
     axs[2].set_title("FDI")
-    axs[2].imshow(patch.data['FDI'][scene, :, :, 0])
+    patch.plot(feature=(FeatureType.DATA, 'FDI'), axes=axs[2], channels=[0], times=[scene])
 
     axs[3].set_title("NDWI")
-    axs[3].imshow(patch.data['NDWI'][scene, :, :, 0])
+    patch.plot(feature=(FeatureType.DATA, 'NDWI'), axes=axs[3], channels=[0], times=[scene])
 
     axs[4].set_title("Data Mask")
-    axs[4].imshow(patch.mask['IS_DATA'][scene, :, :, 0])
+    patch.plot(feature=(FeatureType.MASK, 'IS_DATA'), axes=axs[4], channels=[0], times=[scene])
 
     axs[5].set_title("Cloud Mask")
-    axs[5].imshow(patch.mask['CLM_S2C'][scene, :, :, 0])
+    patch.plot(feature=(FeatureType.MASK, 'CLM_S2C'), axes=axs[5], channels=[0], times=[scene])
 
     axs[6].set_title("Water Mask")
-    axs[6].imshow(patch.mask['WATER_MASK'][scene, :, :, 0])
+    patch.plot(feature=(FeatureType.MASK, 'WATER_MASK'), axes=axs[6], channels=[0], times=[scene])
 
     axs[6].set_title("Water Mask")
-    axs[6].imshow(patch.mask['WATER_MASK'][scene, :, :, 0])
+    patch.plot(feature=(FeatureType.MASK, 'WATER_MASK'), axes=axs[6], channels=[0], times=[scene])
 
     axs[7].set_title("Normed FDI")
-    axs[7].imshow(patch.data['NORM_FDI'][scene, :, :, 0])
+    patch.plot(feature=(FeatureType.DATA, 'NORM_FDI'), axes=axs[7], channels=[0], times=[scene])
 
     axs[8].set_title("Normed NDVI")
-    axs[8].imshow(patch.data['NORM_NDVI'][scene, :, :, 0])
+    patch.plot(feature=(FeatureType.DATA, 'NORM_NDVI'), axes=axs[8], channels=[0], times=[scene])
 
     axs[9].set_title("AVG NDVI")
-    axs[9].imshow(patch.data['MEAN_NDVI'][scene, :, :, 0])
+    patch.plot(feature=(FeatureType.DATA, 'MEAN_NDVI'), axes=axs[9], channels=[0], times=[scene])
 
     axs[10].set_title("AVG FDI")
-    axs[10].imshow(patch.data['MEAN_FDI'][scene, :, :, 0])
+    patch.plot(feature=(FeatureType.DATA, 'MEAN_FDI'), axes=axs[10], channels=[0], times=[scene])
 
     axs[11].set_title("Combined mask")
-    axs[11].imshow(patch.mask['FULL_MASK'][scene, :, :, 0])
+    patch.plot(feature=(FeatureType.MASK, 'FULL_MASK'), axes=axs[11], channels=[0], times=[scene])
 
     axs[12].set_title("Simple cutoff")
     axs[12].imshow((patch.data['NORM_FDI'][scene, :, :, 0] > 0.005) & (patch.data['NORM_NDVI'][scene, :, :, 0] > 0.1))
@@ -74,15 +74,15 @@ def plot_masks_and_vals(patch, points=None, scene=0):
 
     if ("SCENE_CLASSIFICATION" in patch.data):
         axs[14].set_title("Labels")
-        axs[14].imshow(patch.data['SCENE_CLASSIFICATION'][scene, :, :, 0])
+        patch.plot(feature=(FeatureType.DATA, 'SCENE_CLASSIFICATION'), axes=axs[14], channels=[0], times=[scene])
 
     elif ('CLASSIFICATION' in patch.data):
-        classifcations = patch.data['CLASSIFICATION'][scene, :, :, 0]
+        classifications = patch.data['CLASSIFICATION'][scene, :, :, 0]
 
-        p_grid = np.array([cols[val] for val in classification.flatten()])
+        p_grid = np.array([cols_rgb[val] for val in classifications.flatten()])
 
         axs[14].set_title("Labels")
-        axs[14].imshow(p_grid.reshape(classifcations.shape[0], classifcations.shape[1], 3))
+        axs[14].imshow(p_grid.reshape(classifications.shape[0], classifications.shape[1], 3))
 
     plt.tight_layout()
     return fig, axs
@@ -137,7 +137,7 @@ def plot_classifications(patchDir, features=None):
     norm_ndvi = patch.data['NORM_NDVI'][0, :, :, 0]
     norm_fdi = patch.data['NORM_FDI'][0, :, :, 0]
 
-    fig, axs = plt.subplots(nrows=2, ncols=3, figsize=(20, 30))
+    fig, axs = plt.subplots(nrows=2, ncols=3, figsize=(20, 10))
     axs = axs.flatten()
 
     fndvi = norm_ndvi.flatten()
@@ -150,9 +150,9 @@ def plot_classifications(patchDir, features=None):
     axs[0].set_title("Labels")
     axs[0].imshow(p_grid.reshape(classifcations.shape[0], classifcations.shape[1], 3))
 
-    axs[1].imshow(patch.data['NDVI'][0, :, :, 0])
+    patch.plot(feature=(FeatureType.DATA, 'NDVI'), axes=axs[1], channels=[0], times=[0])
     axs[1].set_title('NDVI')
-    axs[2].imshow(patch.data['FDI'][0, :, :, 0])
+    patch.plot(feature=(FeatureType.DATA, 'FDI'), axes=axs[2], channels=[0], times=[0])
     axs[2].set_title('FDI')
 
     for cat in colors.keys():

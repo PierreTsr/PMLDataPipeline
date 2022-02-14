@@ -5,24 +5,24 @@ from plasticfinder.tasks.water_detection import WaterDetector
 from plasticfinder.tasks.ndwi import get_ndwi_task
 from plasticfinder.tasks.ndvi import get_ndvi_task
 from plasticfinder.tasks.fdi import CalcFDI
-from plasticfinder.tasks.input_tasks import input_task, local_input_task
+from plasticfinder.tasks.input_tasks import input_task, local_input_task, NoTileFoundError
 from plasticfinder.tasks.local_norm import LocalNormalization
-from plasticfinder.tasks.detect_plastics import DetectPlastics
+from plasticfinder.tasks.detect_plastics import DetectPlastics, UnsupervisedPlasticDetector
 from plasticfinder.class_deffs import catMap, colors
 
 import numpy as np
 import geopandas as gp
 import contextily as cx
 import matplotlib.pyplot as plt
-from eolearn.core import SaveTask, LinearWorkflow, LoadTask
+from eolearn.core import SaveTask, linearly_connect_tasks, LoadTask, EOWorkflow, OutputTask
 from eolearn.core.constants import OverwritePermission
 from plasticfinder.viz import plot_ndvi_fid_plots, plot_masks_and_vals
-from sentinelhub import UtmZoneSplitter, BBoxSplitter, BBox, CRS
+from sentinelhub import UtmZoneSplitter, TileSplitter, DataCollection, BBox, CRS
 from shapely.geometry import box, Polygon, shape
 from multiprocessing import Pool
 
 
-def get_and_process_patch(bounds, time_range, base_dir, index):
+def get_and_process_patch(bbox, timestamps, tile_ids, base_dir, index):
     """
         Defines a workflow that will download and process a specific EOPatch.
 
@@ -52,35 +52,38 @@ def get_and_process_patch(bounds, time_range, base_dir, index):
     water_detection = WaterDetector()
     combine_mask = CombineMask()
     local_norm = LocalNormalization()
+    output_task = OutputTask("eopatch")
 
-    fetch_workflow = LinearWorkflow(local_input_task,
-                                    # add_l2a, # removing useless download to save SH processing units
-                                    get_ndvi_task(),
-                                    get_ndwi_task(),
-                                    add_fdi,
-                                    get_cloud_classifier_task(),
-                                    water_detection,
-                                    combine_mask,
-                                    local_norm,
-                                    save)
-
-    feature_result = fetch_workflow.execute({
-        local_input_task: {
-            'bbox': BBox(bounds, CRS.WGS84),
+    nodes = linearly_connect_tasks(local_input_task,
+                                   get_ndvi_task(),
+                                   get_ndwi_task(),
+                                   add_fdi,
+                                   get_cloud_classifier_task(),
+                                   water_detection,
+                                   combine_mask,
+                                   local_norm,
+                                   save,
+                                   output_task)
+    workflow = EOWorkflow(nodes)
+    feature_result = workflow.execute({
+        nodes[0]: {
+            'bbox': bbox,
+            'timestamps': timestamps,
+            'ids': tile_ids
         },
-        combine_mask: {
-            'use_water': False
+        nodes[-4]: {
+            'use_water': True
         },
-        local_norm: {
-            'method': 'min',
+        nodes[-3]: {
+            'method': 'gaussian',
             'window_size': 10,
         }
-    })
-    patch = feature_result.eopatch()
+        })
+    patch = feature_result.outputs["eopatch"]
     return patch
 
 
-def download_region(base_dir, minx, miny, maxx, maxy, time_range, target_tiles=None):
+def download_region(base_dir, minx, miny, maxx, maxy, time_range, target_tiles=None, patches=(1, 1)):
     """
         Defines a workflow that will download and process all EOPatches in a defined region.
 
@@ -111,24 +114,31 @@ def download_region(base_dir, minx, miny, maxx, maxy, time_range, target_tiles=N
     """
 
     region = box(minx, miny, maxx, maxy)
-    bbox_splitter = BBoxSplitter([region], CRS.WGS84, (20, 20))
+    bbox_splitter = TileSplitter(
+        [region],
+        CRS.WGS84,
+        tile_split_shape=patches,
+        data_collection=DataCollection.SENTINEL2_L1C,
+        time_interval=('2018-10-30', '2018-11-01')
+    )
 
     bbox_list = np.array(bbox_splitter.get_bbox_list())
     info_list = np.array(bbox_splitter.get_info_list())
 
     # Prepare info of selected EOPatches
-    geometry = [Polygon(bbox.get_polygon()) for bbox in bbox_list]
+    geometry = [Polygon(bbox.transform("EPSG:3857").get_polygon()) for bbox in bbox_list]
     idxs_x = [info['index_x'] for info in info_list]
     idxs_y = [info['index_y'] for info in info_list]
     ids = range(len(info_list))
+    tile_ids = [info["ids"] for info in info_list]
 
     gdf = gp.GeoDataFrame({'index': ids, 'index_x': idxs_x, 'index_y': idxs_y},
-                          crs='EPSG:4326',
+                          crs='EPSG:3857',
                           geometry=geometry)
 
-    ax = gdf.to_crs('EPSG:3857').plot(facecolor='w', edgecolor='r', figsize=(20, 20), alpha=0.3)
+    ax = gdf.plot(facecolor='w', edgecolor='r', figsize=(20, 10), alpha=0.3)
 
-    for idx, row in gdf.to_crs("EPSG:3857").iterrows():
+    for idx, row in gdf.iterrows():
         geo = row.geometry
         xindex = row['index_x']
         yindex = row['index_y']
@@ -139,21 +149,28 @@ def download_region(base_dir, minx, miny, maxx, maxy, time_range, target_tiles=N
     plt.savefig(f'{base_dir}/region.png')
 
     total = len(target_tiles) if target_tiles else len(bbox_list)
+    args = [(idx, bbox, info, base_dir, total) for idx, (bbox, info) in enumerate(zip(bbox_list, info_list))]
+    # for arg in args:
+    #     patch_process(*arg)
     pool = Pool(12)
-    args = [(idx, bbox, time_range, base_dir) for idx, bbox in enumerate(bbox_list)]
     pool.starmap(patch_process, args)
 
 
-def patch_process(index, patch_box, time_range, base_dir):
-    print("Getting patch ", index, ' of ', 400)
-    patch = get_and_process_patch(patch_box, time_range, base_dir, index)
-    fig, ax = plot_masks_and_vals(patch)
-    fig.savefig(f'{base_dir}/feature_{index}/bands.png')
-    plt.close(fig)
+def patch_process(index, patch_box, info, base_dir, total):
+    timestamps = info["timestamps"]
+    tile_ids = info["ids"]
+    print("Getting patch ", index, ' of ', total)
+    try:
+        patch = get_and_process_patch(patch_box, timestamps, tile_ids, base_dir, index)
+        fig, ax = plot_masks_and_vals(patch)
+        fig.savefig(f'{base_dir}/feature_{index}/bands.png')
+        plt.close(fig)
 
-    fig, ax = plot_ndvi_fid_plots(patch)
-    fig.savefig(f'{base_dir}/feature_{index}/ndvi_fdi.png')
-    plt.close(fig)
+        fig, ax = plot_ndvi_fid_plots(patch)
+        fig.savefig(f'{base_dir}/feature_{index}/ndvi_fdi.png')
+        plt.close(fig)
+    except NoTileFoundError:
+        print(f"Warning: missing tiles {[id + '.tif' for id in tile_ids]}")
 
 
 def predict_using_model(patch_dir, model_file, method, window_size):
@@ -176,17 +193,14 @@ def predict_using_model(patch_dir, model_file, method, window_size):
     path = patch_dir
     if type(path) != str:
         path = str(path)
-    save = SaveTask(path=path, overwrite_permission=OverwritePermission.OVERWRITE_PATCH)
+    save = SaveTask(path=path, overwrite_permission=OverwritePermission.OVERWRITE_FEATURES)
     load_task = LoadTask(path=path)
     local_norm = LocalNormalization()
 
-    detect_plastics = DetectPlastics(model_file=model_file)
-    workflow = LinearWorkflow(load_task, local_norm, detect_plastics, save)
+    detect_plastics = UnsupervisedPlasticDetector() #DetectPlastics(model_file=model_file)
+    nodes = linearly_connect_tasks(load_task, detect_plastics, save)
+    workflow = EOWorkflow(nodes)
     workflow.execute({
-        local_norm: {
-            'method': method,
-            'window_size': window_size
-        }
     })
 
 
