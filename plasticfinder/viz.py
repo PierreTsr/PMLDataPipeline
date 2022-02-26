@@ -1,23 +1,24 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.patches import Ellipse
 from plasticfinder.class_deffs import catMap, colors, cols_rgb
 from eolearn.core import LoadTask, FeatureType
 from pathlib import Path
-
-
-# def plot_predictions(patch):
+from scipy.stats import chi2, norm
+from plasticfinder.tasks.detect_plastics import FEATURES, BAND_NAMES, get_features
 
 
 def plot_masks_and_vals(patch, points=None, scene=0):
-    ''' Method that will take a given patch and plot the various data and mask layers it contains
+    """
+        Method that will take a given patch and plot the various data and mask layers it contains
 
         Parameters:
             - patch: an EOPatch to visualize
             - points: A list of points to overlay on top of the scene
-            - scene: The index of the scene within the EOPatch if there are multiple satelite passes.
+            - scene: The index of the scene within the EOPatch if there are multiple satellite passes.
         Returns
             (fig,axs) : the output figure and the individual plot axis
-    '''
+    """
 
     extent = [patch.bbox.min_x, patch.bbox.max_x, patch.bbox.min_y, patch.bbox.max_y]
 
@@ -26,7 +27,7 @@ def plot_masks_and_vals(patch, points=None, scene=0):
     axs = axs.flatten()
 
     axs[0].set_title("True Color")
-    patch.plot(feature=(FeatureType.DATA, "TRUE_COLOR"), axes=axs[0], rgb=[2, 1, 0])
+    patch.plot(feature=(FeatureType.DATA, "TRUE_COLOR"), axes=axs[0], rgb=[0, 1, 2])
 
     axs[1].set_title("NDVI")
     patch.plot(feature=(FeatureType.DATA, 'NDVI'), axes=axs[1], channels=[0], times=[scene])
@@ -88,36 +89,125 @@ def plot_masks_and_vals(patch, points=None, scene=0):
     return fig, axs
 
 
-def plot_ndvi_fid_plots(patch):
-    ''' Method that will take a given patch and plot NDVI and FDI relationships.
+def plot_ndvi_fid_plots(patch, γ, σ, k, fdi_thresh):
+    """
+        Method that will take a given patch and plot NDVI and FDI relationships.
 
         Parameters:
             - patch: an EOPatch to visualize
         Returns
             (fig,axs) : the output figure and the individual plot axis
-    '''
+    """
+    levels = np.array([1e-2, 1e-3, 1e-4, 1e-5])
+    t_stats_2 = chi2.ppf(1 - levels, 2)
+    filter_t = chi2.ppf(1 - 1e-5, k)
 
-    fig, axs = plt.subplots(2, 3, figsize=(10 * 3, 10 * 2))
+    fdi = FEATURES["fdi"]
+    ndvi = FEATURES["ndvi"]
+    band_1 = FEATURES["bands"][0]
+    band_2 = FEATURES["bands"][1]
+    band_3 = FEATURES["bands"][2]
+
+    features, _ = get_features(patch, "NORM_BANDS", BAND_NAMES)
+    x = features.reshape((-1, k))
+    t = np.sum((x - γ) * np.dot(np.linalg.inv(σ), (x - γ).T).T, axis=1)
+    labels = np.array(t < filter_t, dtype=np.int)
+
+    fig, axs = plt.subplots(3, 3, figsize=(10 * 3, 10 * 3))
     axs = axs.flatten()
 
-    axs[0].scatter(patch.data['NDVI'].flatten(), patch.data['FDI'].flatten(), s=1.0, alpha=1)  # c = p_grid)
-    axs[0].set_xlabel("NDVI")
-    axs[0].set_ylabel("FDI")
+    idx = [2, 1]
+    band_idx = BAND_NAMES.index(band_1)
+    axis = 0
+    ells = confidence_ellipse(γ[idx], σ[np.ix_(idx, idx)], t_stats_2)
+    axs[axis].scatter(patch.data['NORM_BANDS'][:, :, :, band_idx].flatten(), patch.data[fdi].flatten(), s=1.0, c=labels,
+                      cmap="bwr")
+    axs[axis].axhline(y=fdi_thresh, color='r', linestyle='-')
+    for ell in ells:
+        axs[axis].add_artist(ell)
+    axs[axis].set_xlabel(band_1)
+    axs[axis].set_ylabel(fdi)
 
-    axs[1].scatter(patch.data['NORM_NDVI'].flatten(), patch.data['NORM_FDI'].flatten(), s=2., alpha=0.8)  # c=p_grid)
-    axs[1].set_xlabel("NORMED_NDVI")
-    axs[1].set_ylabel("NORMED_FDI")
+    idx = [3, 1]
+    band_idx = BAND_NAMES.index(band_2)
+    axis = 1
+    ells = confidence_ellipse(γ[idx], σ[np.ix_(idx, idx)], t_stats_2)
+    axs[axis].scatter(patch.data['NORM_BANDS'][:, :, :, band_idx].flatten(), patch.data[fdi].flatten(), s=1.0, c=labels,
+                      cmap="bwr")
+    axs[axis].axhline(y=fdi_thresh, color='r', linestyle='-')
+    for ell in ells:
+        axs[axis].add_artist(ell)
+    axs[axis].set_xlabel(band_2)
+    axs[axis].set_ylabel(fdi)
 
-    axs[2].scatter(patch.data['NORM_NDVI'].flatten(), patch.data['FDI'].flatten(), s=2.0, alpha=0.8)  # c = p_grid)
-    axs[2].set_xlabel("NORMED_NDVI")
-    axs[2].set_ylabel("FDI")
+    idx = [4, 1]
+    band_idx = BAND_NAMES.index(band_3)
+    axis = 2
+    ells = confidence_ellipse(γ[idx], σ[np.ix_(idx, idx)], t_stats_2)
+    axs[axis].scatter(patch.data['NORM_BANDS'][:, :, :, band_idx].flatten(), patch.data[fdi].flatten(), s=1.0, c=labels,
+                      cmap="bwr")
+    axs[axis].axhline(y=fdi_thresh, color='r', linestyle='-')
+    for ell in ells:
+        axs[axis].add_artist(ell)
+    axs[axis].set_xlabel(band_3)
+    axs[axis].set_ylabel(fdi)
 
-    axs[3].scatter(patch.data['MEAN_NDVI'].flatten(), patch.data['NDVI'].flatten(), s=2.0, alpha=0.8)  # c=p_grid)
+    idx = [0, 1]
+    axis = 3
+    ells = confidence_ellipse(γ[idx], σ[np.ix_(idx, idx)], t_stats_2)
+    axs[axis].scatter(patch.data[ndvi].flatten(), patch.data[fdi].flatten(), s=1.0, c=labels, cmap="bwr")
+    axs[axis].axhline(y=fdi_thresh, color='r', linestyle='-')
+    for ell in ells:
+        axs[axis].add_artist(ell)
+    axs[axis].set_xlabel(ndvi)
+    axs[axis].set_ylabel(fdi)
 
-    axs[3].set_xlabel("MEAN_NDVI")
-    axs[3].set_ylabel("NDVI")
+    range_ = (-0.25, 0.25)
+    axis = 4
+    x = np.linspace(*range_, 100)
+    axs[axis].hist(patch.data[ndvi].flatten(), bins=100, range=range_, density=True)
+    axs[axis].plot(x, norm.pdf(x, γ[0], np.sqrt(σ[0, 0])), 'r-')
+    axs[axis].set_xlabel(ndvi)
+    axs[axis].set_ylabel("count")
+
+    range_ = (-100, 150)
+    axis = 5
+    x = np.linspace(*range_, 100)
+    axs[axis].hist(patch.data[fdi].flatten(), bins=100, range=range_, density=True)
+    axs[axis].plot(x, norm.pdf(x, γ[1], np.sqrt(σ[1, 1])), 'r-')
+    axs[axis].set_xlabel(fdi)
+    axs[axis].set_ylabel("count")
+
+    axis = 6
+    axs[axis].set_title("True Color")
+    patch.plot(feature=(FeatureType.DATA, "TRUE_COLOR"), axes=axs[axis], rgb=[0, 1, 2])
+
+    axis = 7
+    axs[axis].set_title(fdi)
+    patch.plot(feature=(FeatureType.DATA, fdi), axes=axs[axis], channels=[0], times=[0])
+
+    axis = 8
+    axs[axis].set_title("Debris")
+    axs[axis].imshow(labels.reshape((features.shape[0], features.shape[1])))
+
     plt.tight_layout()
     return fig, axs
+
+
+# from https://stackoverflow.com/questions/20126061/creating-a-confidence-ellipses-in-a-sccatterplot-using-matplotlib
+def confidence_ellipse(center, cov, t_stats_2):
+    ells = []
+    lambda_, v = np.linalg.eig(cov)
+    lambda_ = np.sqrt(lambda_)
+    for t, color in zip(np.sqrt(t_stats_2), iter(plt.cm.rainbow(np.linspace(0, 1, t_stats_2.size)))):
+        ell = Ellipse(xy=center,
+                      width=lambda_[0] * 2 * t,
+                      height=lambda_[1] * 2 * t,
+                      angle=np.rad2deg(np.arccos(v[0, 0])))
+        ell.set_color(color)
+        ell.set_facecolor('none')
+        ells.append(ell)
+    return ells
 
 
 def plot_classifications(patchDir, features=None):
