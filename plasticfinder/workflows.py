@@ -1,4 +1,4 @@
-from eolearn.core import EOPatch
+from eolearn.core import EOPatch, EONode
 from plasticfinder.tasks.combined_masks import CombineMask
 from plasticfinder.tasks.cloud_classifier import get_cloud_classifier_task
 from plasticfinder.tasks.water_detection import WaterDetector
@@ -7,10 +7,12 @@ from plasticfinder.tasks.ndvi import get_ndvi_task
 from plasticfinder.tasks.fdi import CalcFDI
 from plasticfinder.tasks.input_tasks import input_task, local_input_task, NoTileFoundError
 from plasticfinder.tasks.local_norm import LocalNormalization
-from plasticfinder.tasks.detect_plastics import DetectPlastics, UnsupervisedPlasticDetector
+from plasticfinder.tasks.detect_plastics import DetectPlastics, UnsupervisedPlasticDetector, ExtractFeatures
 from plasticfinder.class_deffs import catMap, colors
 
+import os
 import numpy as np
+import numpy.ma as ma
 import geopandas as gp
 import contextily as cx
 import matplotlib.pyplot as plt
@@ -20,6 +22,8 @@ from plasticfinder.viz import plot_ndvi_fid_plots, plot_masks_and_vals
 from sentinelhub import UtmZoneSplitter, TileSplitter, DataCollection, BBox, CRS
 from shapely.geometry import box, Polygon, shape
 from multiprocessing import Pool
+
+NTHREAD = 14
 
 
 def get_and_process_patch(bbox, timestamps, tile_ids, base_dir, index):
@@ -46,7 +50,14 @@ def get_and_process_patch(bbox, timestamps, tile_ids, base_dir, index):
         Returns:
             The EOPatch for this region and time range.
     """
-    save = SaveTask(path=f'{base_dir}/feature_{index}/', overwrite_permission=OverwritePermission.OVERWRITE_PATCH)
+    full_feature_path = base_dir / "full_features"
+    partial_feature_path = base_dir / "model_features"
+
+    save_full = SaveTask(path=full_feature_path / f'feature_{index}',
+                         overwrite_permission=OverwritePermission.OVERWRITE_PATCH)
+    save_partial = SaveTask(path=partial_feature_path / f'feature_{index}',
+                            overwrite_permission=OverwritePermission.OVERWRITE_PATCH)
+    extract_feature = ExtractFeatures()
 
     add_fdi = CalcFDI()
     water_detection = WaterDetector()
@@ -62,8 +73,12 @@ def get_and_process_patch(bbox, timestamps, tile_ids, base_dir, index):
                                    water_detection,
                                    combine_mask,
                                    local_norm,
-                                   save,
+                                   save_full,
                                    output_task)
+
+    extraction_node = EONode(extract_feature, inputs=[nodes[-3]])
+    save_partial_node = EONode(save_partial, inputs=[extraction_node])
+    nodes += [extraction_node, save_partial_node]
     workflow = EOWorkflow(nodes)
     feature_result = workflow.execute({
         nodes[0]: {
@@ -71,14 +86,14 @@ def get_and_process_patch(bbox, timestamps, tile_ids, base_dir, index):
             'timestamps': timestamps,
             'ids': tile_ids
         },
-        nodes[-4]: {
+        nodes[-6]: {
             'use_water': True
         },
-        nodes[-3]: {
+        nodes[-5]: {
             'method': 'gaussian',
-            'window_size': 10,
+            'window_size': 40,
         }
-        })
+    })
     patch = feature_result.outputs["eopatch"]
     return patch
 
@@ -112,6 +127,14 @@ def download_region(base_dir, minx, miny, maxx, maxy, time_range, target_tiles=N
         Returns:
             Nothing.
     """
+    full_feature_path = base_dir / "full_features"
+    partial_feature_path = base_dir / "model_features"
+    if not os.path.exists(base_dir):
+        os.mkdir(base_dir)
+    if not os.path.exists(partial_feature_path):
+        os.makedirs(partial_feature_path)
+    if not os.path.exists(full_feature_path):
+        os.makedirs(full_feature_path)
 
     region = box(minx, miny, maxx, maxy)
     bbox_splitter = TileSplitter(
@@ -152,8 +175,22 @@ def download_region(base_dir, minx, miny, maxx, maxy, time_range, target_tiles=N
     args = [(idx, bbox, info, base_dir, total) for idx, (bbox, info) in enumerate(zip(bbox_list, info_list))]
     # for arg in args:
     #     patch_process(*arg)
-    pool = Pool(12)
+    pool = Pool(NTHREAD)
     pool.starmap(patch_process, args)
+
+
+def plot_ndvis_fdis(patch_dir, distrib):
+    patch = EOPatch.load(patch_dir)
+    fig, ax = plot_ndvi_fid_plots(patch, *distrib)
+    fig.savefig(patch_dir / "ndvi_fdi.png")
+    plt.close(fig)
+
+
+def plot_patch(patch_dir):
+    patch = EOPatch.load(patch_dir)
+    fig, ax = plot_masks_and_vals(patch)
+    fig.savefig(patch_dir / "bands.png")
+    plt.close(fig)
 
 
 def patch_process(index, patch_box, info, base_dir, total):
@@ -162,13 +199,6 @@ def patch_process(index, patch_box, info, base_dir, total):
     print("Getting patch ", index, ' of ', total)
     try:
         patch = get_and_process_patch(patch_box, timestamps, tile_ids, base_dir, index)
-        fig, ax = plot_masks_and_vals(patch)
-        fig.savefig(f'{base_dir}/feature_{index}/bands.png')
-        plt.close(fig)
-
-        fig, ax = plot_ndvi_fid_plots(patch)
-        fig.savefig(f'{base_dir}/feature_{index}/ndvi_fdi.png')
-        plt.close(fig)
     except NoTileFoundError:
         print(f"Warning: missing tiles {[id + '.tif' for id in tile_ids]}")
 
@@ -197,7 +227,7 @@ def predict_using_model(patch_dir, model_file, method, window_size):
     load_task = LoadTask(path=path)
     local_norm = LocalNormalization()
 
-    detect_plastics = UnsupervisedPlasticDetector() #DetectPlastics(model_file=model_file)
+    detect_plastics = UnsupervisedPlasticDetector()  # DetectPlastics(model_file=model_file)
     nodes = linearly_connect_tasks(load_task, detect_plastics, save)
     workflow = EOWorkflow(nodes)
     workflow.execute({
@@ -216,3 +246,40 @@ def extract_targets(patchDir):
     print(classification)
     for coord in np.argwhere(classification == catMap['Debris']):
         print(coord)
+
+
+def plot_base_visualizations(base_dir):
+    full_feature_path = base_dir / "full_features"
+    pool = Pool(NTHREAD)
+
+    distrib = compute_global_distribution(base_dir)
+    args = [(path, distrib) for path in list(full_feature_path.rglob("feature_*"))]
+    pool.starmap(plot_ndvis_fdis, args)
+    args = list(full_feature_path.rglob("feature_*"))
+    pool.map(plot_patch, args)
+
+
+def compute_global_distribution(patch_dir):
+    pool = Pool(NTHREAD)
+    results = pool.map(get_features, list((patch_dir / "model_features").rglob("feature_*")))
+    results = np.vstack(list(filter(lambda x: x is not None, results)))
+    results, t = fdi_thresholding(results)
+    γ = results.mean(axis=0)
+    σ = np.cov(results, rowvar=False)
+    return γ, σ, results.shape[1], t
+
+
+def get_features(path):
+    patch = EOPatch.load(path)
+    mask = patch.mask["FULL_MASK"].ravel()
+    if not np.any(mask):
+        return None
+    features = patch.data["FEATURES"]
+    features = features.reshape((-1, features.shape[-1]))[mask, :]
+    return features
+
+
+def fdi_thresholding(features, p=1e-3):
+    fdi = features[:, 1]
+    t = np.percentile(fdi, (1 - p)*100)
+    return features[fdi < t, :], t
