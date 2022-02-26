@@ -49,15 +49,25 @@ class LocalInputTask(EOTask):
         )
         self.mask_task = AddFeatureTask(feature=(FeatureType.MASK, "IS_DATA"))
         self.true_color_task = AddFeatureTask((FeatureType.DATA, "TRUE_COLOR"))
+        self.swir_task = AddFeatureTask((FeatureType.DATA, "SWIR_COMPOSITE"))
+        self.id_task = AddFeatureTask((FeatureType.META_INFO, "TILE_ID"))
+        self.gain = 1
 
-    def load_tile(self, eopatch, filename, timestamp):
+    def load_tile(self, eopatch, filename, timestamp, id):
         eopatch = self.import_task(eopatch=eopatch, filename=str(filename))
         eopatch.timestamp.append(timestamp)
         mask = eopatch.data["BANDS-S2-L1C"] != .0
         mask = np.any(mask, axis=-1, keepdims=True)
         eopatch = self.mask_task(eopatch, mask)
-        eopatch = self.true_color_task(eopatch,
-                                       np.array(eopatch.data["BANDS-S2-L1C"][:, :, :, 1:4], dtype=np.float32) / 10000)
+        eopatch = self.true_color_task(
+            eopatch,
+            np.array(eopatch.data["BANDS-S2-L1C"][:, :, :, [3, 2, 1]]*self.gain, dtype=np.float32) / 10000
+        )
+        eopatch = self.swir_task(
+            eopatch,
+            np.array(eopatch.data["BANDS-S2-L1C"][:, :, :, [12, 8, 3]]*self.gain, dtype=np.float32) / 10000
+        )
+        eopatch = self.id_task(eopatch, id)
         return eopatch
 
 
@@ -89,7 +99,7 @@ class LocalInputTask(EOTask):
                         "Warning: a valid tile has been found but isn't in a compatible projection system. Ignoring tile.")
                     continue
 
-                eopatch = self.load_tile(eopatch, path, timestamp)
+                eopatch = self.load_tile(eopatch, path, timestamp, id)
                 print("Done")
                 return eopatch
         raise NoTileFoundError()
