@@ -4,6 +4,29 @@ from sklearn.cluster import DBSCAN, SpectralClustering, AgglomerativeClustering,
 
 import numpy as np
 
+FEATURES = {
+    "fdi": "NORM_FDI",
+    "ndvi": "NORM_NDVI",
+    "bands": ["B06", "B07", "B11"]
+}
+
+BAND_NAMES = ['B01', 'B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B08A', 'B09', 'B10', 'B11', 'B12']
+
+
+def get_features(eopatch, band_layer, band_names):
+    ndvi = eopatch.data[FEATURES["ndvi"]]
+    fdi = eopatch.data[FEATURES["fdi"]]
+
+    bands = eopatch.data[band_layer]
+    bands = [bands[:, :, :, band_names.index(band)].reshape(ndvi.shape[1], ndvi.shape[2]) for band in FEATURES["bands"]]
+
+    features = np.dstack([
+        ndvi.reshape(ndvi.shape[1], ndvi.shape[2]),
+        fdi.reshape(ndvi.shape[1], ndvi.shape[2]),
+        *bands
+    ])
+    return features, ndvi.shape
+
 
 class DetectPlastics(EOTask):
     ''' EOTask to apply the plastic detection model.
@@ -30,29 +53,15 @@ class DetectPlastics(EOTask):
         self.model = load(model_file)
         self.add_classification = AddFeatureTask((FeatureType.DATA, "CLASSIFICATION"))
 
-    def execute(self, eopatch, band_layer='BANDS-S2-L1C',
+    def execute(self, eopatch, band_layer='NORM_BANDS',
                 band_names=['B01', 'B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B08A', 'B09', 'B10', 'B11',
                             'B12']):
-        ndvi = eopatch.data['NORM_NDVI']
-        fdi = eopatch.data['NORM_FDI']
-        bands = eopatch.data[band_layer]
-
-        band_6 = bands[:, :, :, band_names.index('B06')]
-        band_7 = bands[:, :, :, band_names.index('B07')]
-        band_11 = bands[:, :, :, band_names.index('B11')]
-
-        features = np.dstack([
-            ndvi.reshape(ndvi.shape[1], ndvi.shape[2]),
-            fdi.reshape(ndvi.shape[1], ndvi.shape[2]),
-            band_6.reshape(ndvi.shape[1], ndvi.shape[2]),
-            band_7.reshape(ndvi.shape[1], ndvi.shape[2]),
-            band_11.reshape(ndvi.shape[1], ndvi.shape[2])
-        ])
+        features, shape = get_features(eopatch, band_layer, band_names)
 
         features = np.nan_to_num(features, nan=0, posinf=0, neginf=0)
 
-        predicted_labels = self.model.predict(features.reshape((ndvi.shape[1] * ndvi.shape[2], 5)))
-        eopatch = self.add_classification(eopatch,  predicted_labels.reshape((1, ndvi.shape[1], ndvi.shape[2], 1)))
+        predicted_labels = self.model.predict(features.reshape((shape[1] * shape[2], 5)))
+        eopatch = self.add_classification(eopatch, predicted_labels.reshape((1, shape[1], shape[2], 1)))
         return eopatch
 
 
@@ -67,27 +76,31 @@ class UnsupervisedPlasticDetector(EOTask):
         # self.model = KMeans(n_clusters=2)
         self.add_classification = AddFeatureTask((FeatureType.DATA, "CLASSIFICATION"))
 
-    def execute(self, eopatch, band_layer='BANDS-S2-L1C',
+    def execute(self, eopatch, band_layer='NORM_BANDS',
                 band_names=['B01', 'B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B08A', 'B09', 'B10', 'B11',
                             'B12']):
-        ndvi = eopatch.data['NORM_NDVI']
-        fdi = eopatch.data['NORM_FDI']
-        bands = eopatch.data[band_layer]
-
-        band_6 = bands[:, :, :, band_names.index('B06')]
-        band_7 = bands[:, :, :, band_names.index('B07')]
-        band_11 = bands[:, :, :, band_names.index('B11')]
-
-        features = np.dstack([
-            ndvi.reshape(ndvi.shape[1], ndvi.shape[2]),
-            fdi.reshape(ndvi.shape[1], ndvi.shape[2]),
-            band_6.reshape(ndvi.shape[1], ndvi.shape[2]),
-            band_7.reshape(ndvi.shape[1], ndvi.shape[2]),
-            band_11.reshape(ndvi.shape[1], ndvi.shape[2])
-        ])
+        features, shape = get_features(eopatch, band_layer, band_names)
 
         print(features.shape)
-        predicted_labels = self.model.fit_predict(features.reshape((ndvi.shape[1] * ndvi.shape[2], 5))) + 1
+        predicted_labels = self.model.fit_predict(features.reshape((shape[1] * shape[2], 5))) + 1
         print(predicted_labels.min(), predicted_labels.max())
-        eopatch = self.add_classification(eopatch,  predicted_labels.reshape((1, ndvi.shape[1], ndvi.shape[2], 1)))
+        eopatch = self.add_classification(eopatch, predicted_labels.reshape((1, shape[1], shape[2], 1)))
+        return eopatch
+
+
+class ExtractFeatures(EOTask):
+    def __init__(self):
+        self.add_features = AddFeatureTask((FeatureType.DATA, "FEATURES"))
+        self.add_mask = AddFeatureTask((FeatureType.MASK, "FULL_MASK"))
+
+    def execute(self, eopatch, band_layer='NORM_BANDS',
+                band_names=['B01', 'B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B08A', 'B09', 'B10', 'B11',
+                            'B12']):
+        eopatch = eopatch.copy(features=None)
+        features, shape = get_features(eopatch, band_layer, band_names)
+        mask = eopatch.mask["FULL_MASK"]
+        eopatch.data.clear()
+        eopatch.mask.clear()
+        eopatch = self.add_features(eopatch, np.expand_dims(features, axis=0))
+        eopatch = self.add_mask(eopatch, mask)
         return eopatch
