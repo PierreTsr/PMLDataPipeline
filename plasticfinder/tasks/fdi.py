@@ -15,6 +15,30 @@ DEFAULT_BAND_NAMES = ['B01',
                       'B11',
                       'B12']
 
+DEFAULT_BAND_VALUES = [
+    443,
+    490,
+    560,
+    665,
+    705,
+    740,
+    783,
+    842,
+    865,
+    940,
+    1375,
+    1610,
+    2190
+]
+
+RE = DEFAULT_BAND_NAMES.index("B06")
+NIR = DEFAULT_BAND_NAMES.index("B08")
+SWIR = DEFAULT_BAND_NAMES.index("B11")
+
+λ_re = DEFAULT_BAND_VALUES[RE]
+λ_nir = DEFAULT_BAND_VALUES[NIR]
+λ_swir = DEFAULT_BAND_VALUES[SWIR]
+
 
 class CalcFDI(EOTask):
     """
@@ -34,21 +58,20 @@ class CalcFDI(EOTask):
 
     @staticmethod
     def FDI(NIR, RE, SWIR):
-        factor = 1.636
+        factor = (λ_nir - λ_re) / (λ_swir - λ_re) * 10
         return NIR - (RE + (SWIR - RE) * factor)
 
     def execute(self,
                 eopatch,
                 band_layer='BANDS-S2-L1C',
-                band_names=DEFAULT_BAND_NAMES
                 ):
         bands = eopatch.data[band_layer]
 
-        NIR = bands[:, :, :, band_names.index('B08')]
-        RE = bands[:, :, :, band_names.index('B05')]
-        SWIR = bands[:, :, :, band_names.index('B11')]
+        nir = bands[:, :, :, NIR]
+        re = bands[:, :, :, RE]
+        swir = bands[:, :, :, SWIR]
 
-        FDI = self.FDI(NIR, RE, SWIR).reshape([bands.shape[0], bands.shape[1], bands.shape[2], 1])
+        fdi = self.FDI(nir, re, swir).reshape([bands.shape[0], bands.shape[1], bands.shape[2], 1])
 
-        eopatch = self.add_feature(eopatch, FDI)
+        eopatch = self.add_feature(eopatch, fdi)
         return eopatch
