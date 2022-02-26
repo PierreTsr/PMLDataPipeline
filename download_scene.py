@@ -17,8 +17,9 @@
 
 """
 
-from plasticfinder.workflows import download_region
+from plasticfinder.workflows import download_region, plot_base_visualizations
 from datetime import datetime
+from pathlib import Path
 import argparse
 import json
 
@@ -37,5 +38,6 @@ if __name__ == "__main__":
         datetime.strptime(scene['timeRange'][1], "%Y-%m-%d")
     ]
 
-    download_region(scene['outputDir'], scene['minLon'], scene['minLat'], scene['maxLon'], scene['maxLat'], timeRange,
-                    patches=(50, 50))
+    # download_region(Path(scene['outputDir']), scene['minLon'], scene['minLat'], scene['maxLon'], scene['maxLat'], timeRange,
+    #                 patches=(30, 30))
+    plot_base_visualizations(Path(scene['outputDir']))
