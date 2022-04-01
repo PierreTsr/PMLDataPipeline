@@ -16,10 +16,8 @@ class CombineMask(EOTask):
     def execute(self, eopatch, use_water=True):
         if use_water:
             combined = np.logical_and(eopatch.mask['WATER_MASK'].astype(bool),
-                                      eopatch.mask['IS_DATA'].astype(bool),
-                                      np.invert(eopatch.mask['CLM_S2C'].astype(bool)))
+                                      eopatch.mask['IS_DATA'].astype(bool))
         else:
-            combined = np.logical_and(eopatch.mask['IS_DATA'].astype(bool),
-                                      np.invert(eopatch.mask['CLM_S2C'].astype(bool)))
+            combined = eopatch.mask['IS_DATA'].astype(bool)
         eopatch = self.add_feature(eopatch, combined)
         return eopatch

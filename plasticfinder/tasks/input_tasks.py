@@ -5,8 +5,6 @@ from osgeo import gdal, osr
 from datetime import timedelta, datetime
 from pathlib import Path
 import numpy as np
-import re
-
 
 class NoTileFoundError(Exception):
     pass
@@ -50,12 +48,11 @@ class LocalInputTask(EOTask):
         self.mask_task = AddFeatureTask(feature=(FeatureType.MASK, "IS_DATA"))
         self.true_color_task = AddFeatureTask((FeatureType.DATA, "TRUE_COLOR"))
         self.swir_task = AddFeatureTask((FeatureType.DATA, "SWIR_COMPOSITE"))
-        self.id_task = AddFeatureTask((FeatureType.META_INFO, "TILE_ID"))
+        self.name_task = AddFeatureTask((FeatureType.META_INFO, "TILE_NAME"))
         self.gain = 1
 
-    def load_tile(self, eopatch, filename, timestamp, id):
+    def load_tile(self, eopatch, filename, tile):
         eopatch = self.import_task(eopatch=eopatch, filename=str(filename))
-        eopatch.timestamp.append(timestamp)
         mask = eopatch.data["BANDS-S2-L1C"] != .0
         mask = np.any(mask, axis=-1, keepdims=True)
         eopatch = self.mask_task(eopatch, mask)
@@ -67,7 +64,7 @@ class LocalInputTask(EOTask):
             eopatch,
             np.array(eopatch.data["BANDS-S2-L1C"][:, :, :, [12, 8, 3]]*self.gain, dtype=np.float32) / 10000
         )
-        eopatch = self.id_task(eopatch, id)
+        eopatch = self.name_task(eopatch, tile)
         return eopatch
 
 
@@ -80,28 +77,24 @@ class LocalInputTask(EOTask):
             raise Exception("EOPatch needs to have a bounding box to import local files.")
 
         projcs = eopatch.bbox.crs
-        timestamps = kwargs["timestamps"]
-        ids = kwargs["ids"]
+        tile = kwargs["tile"]
 
-        print("Loading tile...")
-        for timestamp, id in zip(timestamps, ids):
-            s = "*" + id + "*.tif"
-            for path in Path(self.folder).rglob(s):
-                print("Found tile ", path)
-                target = eopatch.bbox
-                footprint = get_bbox(path)
-                if not intersect(target, footprint):
-                    continue
+        s = "*" + tile + "*.tif"
+        for path in Path(self.folder).glob(s):
+            print("Found tile ", path)
+            target = eopatch.bbox
+            footprint = get_bbox(path)
+            if not intersect(target, footprint):
+                continue
 
-                tile_projcs = CRS(get_projcs_code(path))
-                if projcs != tile_projcs:
-                    print(
-                        "Warning: a valid tile has been found but isn't in a compatible projection system. Ignoring tile.")
-                    continue
+            tile_projcs = CRS(get_projcs_code(path))
+            if projcs != tile_projcs:
+                print("Warning: a valid tile has been found but isn't in a compatible projection system. Ignoring tile :", path)
+                print(projcs, tile_projcs)
+                continue
 
-                eopatch = self.load_tile(eopatch, path, timestamp, id)
-                print("Done")
-                return eopatch
+            eopatch = self.load_tile(eopatch, path, tile)
+            return eopatch
         raise NoTileFoundError()
 
 

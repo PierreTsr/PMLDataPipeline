@@ -13,6 +13,10 @@ FEATURES = {
 BAND_NAMES = ['B01', 'B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B08A', 'B09', 'B10', 'B11', 'B12']
 
 
+def get_feature_names():
+    return [FEATURES["fdi"], FEATURES["ndvi"]] + FEATURES["bands"]
+
+
 def get_features(eopatch, band_layer, band_names):
     ndvi = eopatch.data[FEATURES["ndvi"]]
     fdi = eopatch.data[FEATURES["fdi"]]

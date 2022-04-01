@@ -68,7 +68,6 @@ class LocalNormalization(EOTask):
         return np.array(result), np.array(norm_scene), np.invert(np.isnan(result))
 
     def execute(self, eopatch, method='gaussian', window_size=20):
-        print("Normalization task...")
         valid_mask = eopatch.mask['FULL_MASK']
         if np.all(np.invert(valid_mask)):
             eopatch = self.add_norm_fdi(eopatch, np.zeros(eopatch.data['FDI'].shape))
@@ -91,7 +90,6 @@ class LocalNormalization(EOTask):
             eopatch = self.add_mean_bands(eopatch, m_bands.reshape(eopatch.data['BANDS-S2-L1C'].shape))
             eopatch.mask["FULL_MASK"] &= mask
 
-        print("Done")
         return eopatch
 
 
