@@ -16,28 +16,27 @@
    For an example see the file scenes/gulf.json
 
 """
-
-from plasticfinder.workflows import download_region, plot_base_visualizations
-from datetime import datetime
-from pathlib import Path
 import argparse
 import json
+from datetime import datetime
+from pathlib import Path
+
+from plasticfinder.data_processing import post_process_patches, merge_results, post_processing_visualizations
+from plasticfinder.data_querying import preprocess_tile
+from plasticfinder.utils import create_outliers_dataset
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Script to download a given region and process it in to EOPatches')
-    parser.add_argument('--scene', type=str, help='Scene specification file')
+    parser.add_argument('--dir', type=str, help='Output directory')
+    parser.add_argument('--tile', type=str, help='Name of the S2 L1C tile to process')
+
     args = parser.parse_args()
-    try:
-        with open(args.scene, 'r') as f:
-            scene = json.load(f)
-    except:
-        raise Exception("Could not read scene file")
 
-    timeRange = [
-        datetime.strptime(scene['timeRange'][0], "%Y-%m-%d"),
-        datetime.strptime(scene['timeRange'][1], "%Y-%m-%d")
-    ]
+    output_dir = Path(args.dir)
+    tile = args.tile
 
-    # download_region(Path(scene['outputDir']), scene['minLon'], scene['minLat'], scene['maxLon'], scene['maxLat'], timeRange,
-    #                 patches=(30, 30))
-    plot_base_visualizations(Path(scene['outputDir']))
+    # preprocess_tile(output_dir, tile, patches=(15, 15))
+    post_process_patches(output_dir / tile)
+    merge_results(output_dir / tile)
+    post_processing_visualizations(output_dir / tile)
+    create_outliers_dataset(output_dir / tile)

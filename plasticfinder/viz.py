@@ -89,7 +89,7 @@ def plot_masks_and_vals(patch, points=None, scene=0):
     return fig, axs
 
 
-def plot_ndvi_fid_plots(patch, γ, σ, k, fdi_thresh):
+def plot_ndvi_fid_plots(patch):
     """
         Method that will take a given patch and plot NDVI and FDI relationships.
 
@@ -98,97 +98,110 @@ def plot_ndvi_fid_plots(patch, γ, σ, k, fdi_thresh):
         Returns
             (fig,axs) : the output figure and the individual plot axis
     """
+    fig, axs = plt.subplots(3, 3, figsize=(10 * 3, 10 * 3))
+    axs = axs.flatten()
+
+    if not np.any(patch.mask["FULL_MASK"]):
+        return fig, axs
+
     levels = np.array([1e-2, 1e-3, 1e-4, 1e-5])
     t_stats_2 = chi2.ppf(1 - levels, 2)
-    filter_t = chi2.ppf(1 - 1e-5, k)
 
     fdi = FEATURES["fdi"]
     ndvi = FEATURES["ndvi"]
     band_1 = FEATURES["bands"][0]
     band_2 = FEATURES["bands"][1]
     band_3 = FEATURES["bands"][2]
+    _, dim1, dim2, _ = patch.data[fdi].shape
+    mask = patch.mask["FULL_MASK"].ravel()
 
-    features, _ = get_features(patch, "NORM_BANDS", BAND_NAMES)
-    x = features.reshape((-1, k))
-    t = np.sum((x - γ) * np.dot(np.linalg.inv(σ), (x - γ).T).T, axis=1)
-    labels = np.array(t < filter_t, dtype=np.int)
+    lab_emp = patch.mask["EMPIRICAL_OUTLIERS"].ravel()
+    lab_robust = patch.mask["ROBUST_OUTLIERS"].ravel()
+    lab_forest = patch.mask["FOREST_OUTLIERS"].ravel()
 
-    fig, axs = plt.subplots(3, 3, figsize=(10 * 3, 10 * 3))
-    axs = axs.flatten()
+    mean_emp = patch.scalar_timeless["EMPIRICAL_MEAN"]
+    cov_emp = patch.scalar_timeless["EMPIRICAL_COV"].reshape((5, 5))
 
-    idx = [2, 1]
-    band_idx = BAND_NAMES.index(band_1)
-    axis = 0
-    ells = confidence_ellipse(γ[idx], σ[np.ix_(idx, idx)], t_stats_2)
-    axs[axis].scatter(patch.data['NORM_BANDS'][:, :, :, band_idx].flatten(), patch.data[fdi].flatten(), s=1.0, c=labels,
-                      cmap="bwr")
-    axs[axis].axhline(y=fdi_thresh, color='r', linestyle='-')
-    for ell in ells:
-        axs[axis].add_artist(ell)
-    axs[axis].set_xlabel(band_1)
-    axs[axis].set_ylabel(fdi)
+    mean_robust = patch.scalar_timeless["ROBUST_MEAN"]
+    cov_robust = patch.scalar_timeless["ROBUST_COV"].reshape((5, 5))
 
-    idx = [3, 1]
-    band_idx = BAND_NAMES.index(band_2)
-    axis = 1
-    ells = confidence_ellipse(γ[idx], σ[np.ix_(idx, idx)], t_stats_2)
-    axs[axis].scatter(patch.data['NORM_BANDS'][:, :, :, band_idx].flatten(), patch.data[fdi].flatten(), s=1.0, c=labels,
-                      cmap="bwr")
-    axs[axis].axhline(y=fdi_thresh, color='r', linestyle='-')
-    for ell in ells:
-        axs[axis].add_artist(ell)
-    axs[axis].set_xlabel(band_2)
-    axs[axis].set_ylabel(fdi)
 
-    idx = [4, 1]
-    band_idx = BAND_NAMES.index(band_3)
-    axis = 2
-    ells = confidence_ellipse(γ[idx], σ[np.ix_(idx, idx)], t_stats_2)
-    axs[axis].scatter(patch.data['NORM_BANDS'][:, :, :, band_idx].flatten(), patch.data[fdi].flatten(), s=1.0, c=labels,
-                      cmap="bwr")
-    axs[axis].axhline(y=fdi_thresh, color='r', linestyle='-')
-    for ell in ells:
-        axs[axis].add_artist(ell)
-    axs[axis].set_xlabel(band_3)
-    axs[axis].set_ylabel(fdi)
 
     idx = [0, 1]
-    axis = 3
-    ells = confidence_ellipse(γ[idx], σ[np.ix_(idx, idx)], t_stats_2)
-    axs[axis].scatter(patch.data[ndvi].flatten(), patch.data[fdi].flatten(), s=1.0, c=labels, cmap="bwr")
-    axs[axis].axhline(y=fdi_thresh, color='r', linestyle='-')
+    axis = 0
+    ells = confidence_ellipse(mean_emp[idx], cov_emp[np.ix_(idx, idx)], t_stats_2)
+    axs[axis].scatter(patch.data[ndvi].ravel()[mask], patch.data[fdi].ravel()[mask], s=1.0,
+                      c=lab_emp[mask],
+                      cmap="bwr")
     for ell in ells:
         axs[axis].add_artist(ell)
     axs[axis].set_xlabel(ndvi)
     axs[axis].set_ylabel(fdi)
 
+    idx = [0, 1]
+    axis = 1
+    ells = confidence_ellipse(mean_robust[idx], cov_robust[np.ix_(idx, idx)], t_stats_2)
+    axs[axis].scatter(patch.data[ndvi].ravel()[mask], patch.data[fdi].ravel()[mask], s=1.0,
+                      c=lab_robust[mask],
+                      cmap="bwr")
+    for ell in ells:
+        axs[axis].add_artist(ell)
+    axs[axis].set_xlabel(ndvi)
+    axs[axis].set_ylabel(fdi)
+
+    idx = [0, 1]
+    axis = 2
+    axs[axis].scatter(patch.data[ndvi].ravel()[mask], patch.data[fdi].ravel()[mask], s=1.0,
+                      c=lab_forest[mask],
+                      cmap="bwr")
+    axs[axis].set_xlabel(ndvi)
+    axs[axis].set_ylabel(fdi)
+
+    # idx = [2, 3]
+    # axis = 3
+    # band_idx_1 = BAND_NAMES.index(band_1)
+    # band_idx_2 = BAND_NAMES.index(band_2)
+    # ells = confidence_ellipse(mean_robust[idx], cov_robust[np.ix_(idx, idx)], t_stats_2)
+    # axs[axis].scatter(patch.data['NORM_BANDS'][:, :, :, band_idx_1].ravel()[mask],
+    #                   patch.data['NORM_BANDS'][:, :, :, band_idx_2].ravel()[mask], s=1.0, c=lab_robust, cmap="bwr")
+    # for ell in ells:
+    #     axs[axis].add_artist(ell)
+    # axs[axis].set_xlabel(ndvi)
+    # axs[axis].set_ylabel(fdi)
+
     range_ = (-0.25, 0.25)
     axis = 4
     x = np.linspace(*range_, 100)
-    axs[axis].hist(patch.data[ndvi].flatten(), bins=100, range=range_, density=True)
-    axs[axis].plot(x, norm.pdf(x, γ[0], np.sqrt(σ[0, 0])), 'r-')
+    axs[axis].hist(patch.data[ndvi].ravel()[mask], bins=100, range=range_, density=True)
+    axs[axis].plot(x, norm.pdf(x, mean_robust[0], np.sqrt(cov_robust[0, 0])), 'r-')
+    axs[axis].plot(x, norm.pdf(x, mean_emp[0], np.sqrt(cov_emp[0, 0])), 'g-')
     axs[axis].set_xlabel(ndvi)
     axs[axis].set_ylabel("count")
 
     range_ = (-100, 150)
     axis = 5
     x = np.linspace(*range_, 100)
-    axs[axis].hist(patch.data[fdi].flatten(), bins=100, range=range_, density=True)
-    axs[axis].plot(x, norm.pdf(x, γ[1], np.sqrt(σ[1, 1])), 'r-')
+    axs[axis].hist(patch.data[fdi].ravel()[mask], bins=100, range=range_, density=True)
+    axs[axis].plot(x, norm.pdf(x, mean_robust[1], np.sqrt(cov_robust[1, 1])), 'r-')
+    axs[axis].plot(x, norm.pdf(x, mean_emp[1], np.sqrt(cov_emp[1, 1])), 'g-')
     axs[axis].set_xlabel(fdi)
     axs[axis].set_ylabel("count")
 
-    axis = 6
+    axis = 3
     axs[axis].set_title("True Color")
     patch.plot(feature=(FeatureType.DATA, "TRUE_COLOR"), axes=axs[axis], rgb=[0, 1, 2])
 
+    axis = 6
+    axs[axis].set_title("Empirical Detection")
+    axs[axis].imshow(lab_emp.reshape((dim1, dim2)))
+
     axis = 7
-    axs[axis].set_title(fdi)
-    patch.plot(feature=(FeatureType.DATA, fdi), axes=axs[axis], channels=[0], times=[0])
+    axs[axis].set_title("Robust Detection")
+    axs[axis].imshow(lab_robust.reshape((dim1, dim2)))
 
     axis = 8
-    axs[axis].set_title("Debris")
-    axs[axis].imshow(labels.reshape((features.shape[0], features.shape[1])))
+    axs[axis].set_title("Forest Detection")
+    axs[axis].imshow(lab_forest.reshape((dim1, dim2)))
 
     plt.tight_layout()
     return fig, axs
