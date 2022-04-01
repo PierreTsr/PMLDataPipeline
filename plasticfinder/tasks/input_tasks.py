@@ -4,7 +4,11 @@ from sentinelhub import DataCollection, SHConfig, BBox, CRS
 from osgeo import gdal, osr
 from datetime import timedelta, datetime
 from pathlib import Path
+from contextlib import redirect_stdout
+import os
+import re
 import numpy as np
+import warnings
 
 class NoTileFoundError(Exception):
     pass
@@ -51,20 +55,30 @@ class LocalInputTask(EOTask):
         self.name_task = AddFeatureTask((FeatureType.META_INFO, "TILE_NAME"))
         self.gain = 1
 
+    @staticmethod
+    def get_timestamp(tile):
+        match = re.search("[0-9]{8}T[0-9]{6}", tile)[0]
+        timestamp = datetime(int(match[0:4]), int(match[4:6]), int(match[6:8]),
+                             int(match[9:11]), int(match[11:13]), int(match[13:15]))
+        return timestamp
+
     def load_tile(self, eopatch, filename, tile):
-        eopatch = self.import_task(eopatch=eopatch, filename=str(filename))
-        mask = eopatch.data["BANDS-S2-L1C"] != .0
-        mask = np.any(mask, axis=-1, keepdims=True)
-        eopatch = self.mask_task(eopatch, mask)
-        eopatch = self.true_color_task(
-            eopatch,
-            np.array(eopatch.data["BANDS-S2-L1C"][:, :, :, [3, 2, 1]]*self.gain, dtype=np.float32) / 10000
-        )
-        eopatch = self.swir_task(
-            eopatch,
-            np.array(eopatch.data["BANDS-S2-L1C"][:, :, :, [12, 8, 3]]*self.gain, dtype=np.float32) / 10000
-        )
-        eopatch = self.name_task(eopatch, tile)
+        with open(os.devnull, "w") as std:
+            with redirect_stdout(std):
+                eopatch = self.import_task(eopatch=eopatch, filename=str(filename))
+                eopatch.timestamp = [self.get_timestamp(tile)]
+                mask = eopatch.data["BANDS-S2-L1C"] != .0
+                mask = np.any(mask, axis=-1, keepdims=True)
+                eopatch = self.mask_task(eopatch, mask)
+                eopatch = self.true_color_task(
+                    eopatch,
+                    np.array(eopatch.data["BANDS-S2-L1C"][:, :, :, [3, 2, 1]]*self.gain, dtype=np.float32) / 10000
+                )
+                eopatch = self.swir_task(
+                    eopatch,
+                    np.array(eopatch.data["BANDS-S2-L1C"][:, :, :, [12, 8, 3]]*self.gain, dtype=np.float32) / 10000
+                )
+                eopatch = self.name_task(eopatch, tile)
         return eopatch
 
 
@@ -81,7 +95,6 @@ class LocalInputTask(EOTask):
 
         s = "*" + tile + "*.tif"
         for path in Path(self.folder).glob(s):
-            print("Found tile ", path)
             target = eopatch.bbox
             footprint = get_bbox(path)
             if not intersect(target, footprint):
@@ -89,7 +102,7 @@ class LocalInputTask(EOTask):
 
             tile_projcs = CRS(get_projcs_code(path))
             if projcs != tile_projcs:
-                print("Warning: a valid tile has been found but isn't in a compatible projection system. Ignoring tile :", path)
+                warnings.warn(f"Warning: a valid tile has been found but isn't in a compatible projection system. Ignoring tile :{path}", ResourceWarning)
                 print(projcs, tile_projcs)
                 continue
 
