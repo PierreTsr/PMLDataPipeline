@@ -19,6 +19,9 @@ rtree = "*"
 sphinx = "*"
 scikit-learn = "~=0.23.1"
 gdal = "==3.3.2"
+folium = "*"
+matplotlib = "*"
+mapclassify = "*"
 
 [requires]
 python_version = "3.8"
