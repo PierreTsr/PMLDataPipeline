@@ -9,7 +9,7 @@
     - scene: The scene definition file
     - model: The folder of the model to run
 """
-from plasticfinder.workflows import predict_using_model
+from plasticfinder.data_querying import predict_using_model
 from plasticfinder.viz import plot_classifications
 from datetime import datetime
 from pathlib import Path
