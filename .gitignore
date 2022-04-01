@@ -145,5 +145,4 @@ cython_debug/
 .idea/
 
 # Data
-data/Ghana/
-data/S2_L1C/
+data/
