@@ -28,7 +28,7 @@ def compute_global_distribution_robust(patch_dir):
     results = np.vstack(list(filter(lambda x: x is not None, results)))
     print(results.shape)
     if results.shape[0] > 1e6:
-        sample = np.random.choice(results.shape[0], int(1e3), replace=False)
+        sample = np.random.choice(results.shape[0], int(1e6), replace=False)
         results = results[sample, :]
     print("Fitting robust covariance estimate:")
     start = timer()
@@ -99,6 +99,8 @@ def fdi_thresholding(features, p=1e-3):
 
 def plot_ndvis_fdis(patch_dir):
     patch = EOPatch.load(patch_dir)
+    if not np.any(patch.mask["FULL_MASK"]):
+        return
     fig, ax = plot_ndvi_fid_plots(patch)
     fig.savefig(patch_dir / "ndvi_fdi.png")
     plt.close(fig)

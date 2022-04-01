@@ -27,7 +27,8 @@ def post_process_patches(base_dir):
                                           (FeatureType.MASK, "ROBUST_OUTLIERS"),
                                           (FeatureType.SCALAR_TIMELESS, "ROBUST_MEAN"),
                                           (FeatureType.SCALAR_TIMELESS, "ROBUST_COV"),
-                                          (FeatureType.MASK, "FOREST_OUTLIERS")]),
+                                          # (FeatureType.MASK, "FOREST_OUTLIERS")
+                                          ]),
                        inputs=[outliers_detection_node])
     workflow = EOWorkflow([load_node, add_distrib_node, outliers_detection_node, save_node])
 
@@ -39,7 +40,8 @@ def post_process_patches(base_dir):
 
     executor = EOExecutor(workflow, args)
     print("Performing outlier detection")
-    executor.run(workers=NTHREAD)
+    executor.run(workers=10)
+    print("Creating outlier dataset")
     create_outliers_dataset(base_dir)
 
 
@@ -47,15 +49,13 @@ def merge_results(base_dir):
     full_feature_path = base_dir / "full_features"
     partial_feature_path = base_dir / "model_features"
 
-    load_partial_node = EONode(LoadTask(path=partial_feature_path, lazy_loading=True), inputs=[])
-    load_full_node = EONode(LoadTask(path=full_feature_path, lazy_loading=True), inputs=[])
-    merge_node = EONode(MergeFeatures(), inputs=[load_full_node, load_partial_node])
-    save_node = EONode(SaveTask(path=full_feature_path, overwrite_permission=OverwritePermission.OVERWRITE_PATCH),
-                       inputs=[merge_node])
-    workflow = EOWorkflow([load_full_node, load_partial_node, merge_node, save_node])
+    load_partial_node = EONode(LoadTask(path=partial_feature_path), inputs=[])
+    save_node = EONode(SaveTask(path=full_feature_path, overwrite_permission=OverwritePermission.ADD_ONLY),
+                       inputs=[load_partial_node],
+                       features=[])
+    workflow = EOWorkflow([load_partial_node, save_node])
 
     args = [{
-        load_full_node: {"eopatch_folder": path.name},
         load_partial_node: {"eopatch_folder": path.name},
         save_node: {"eopatch_folder": path.name}
     } for path in list(partial_feature_path.rglob("feature_*"))]
@@ -67,7 +67,7 @@ def merge_results(base_dir):
 
 def post_processing_visualizations(base_dir):
     full_feature_path = base_dir / "full_features"
-    pool = Pool(NTHREAD)
+    pool = Pool(14)
 
     args = list(full_feature_path.rglob("feature_*"))
     print("Plotting standard visualizations:")

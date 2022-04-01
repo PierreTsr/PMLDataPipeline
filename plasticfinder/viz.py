@@ -41,9 +41,6 @@ def plot_masks_and_vals(patch, points=None, scene=0):
     axs[4].set_title("Data Mask")
     patch.plot(feature=(FeatureType.MASK, 'IS_DATA'), axes=axs[4], channels=[0], times=[scene])
 
-    axs[5].set_title("Cloud Mask")
-    patch.plot(feature=(FeatureType.MASK, 'CLM_S2C'), axes=axs[5], channels=[0], times=[scene])
-
     axs[6].set_title("Water Mask")
     patch.plot(feature=(FeatureType.MASK, 'WATER_MASK'), axes=axs[6], channels=[0], times=[scene])
 

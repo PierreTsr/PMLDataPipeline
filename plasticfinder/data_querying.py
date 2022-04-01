@@ -147,7 +147,7 @@ def preprocess_tile(base_dir, tile, patches=(15, 15)):
     workflow, nodes = patch_preprocessing_workflow(base_dir / tile)
     args = [{
         nodes["input"]: {"bbox": bbox, "tile": tile},
-        nodes["mask"]: {"use_water": False},
+        nodes["mask"]: {"use_water": True},
         nodes["norm"]: {"method": "gaussian", "window_size": 30},
         nodes["save_partial"]: {"eopatch_folder": f"feature_{idx}"},
         nodes["save_full"]: {"eopatch_folder": f"feature_{idx}"}

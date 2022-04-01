@@ -43,7 +43,8 @@ class LocalNormalization(EOTask):
 
     @staticmethod
     def normalize(data, mask, method='gaussian', window_size=20):
-        masked_data = np.where(mask, data, np.nan)
+        mean = np.mean(data, axis=tuple(range(data.ndim - 1)))
+        masked_data = np.where(mask, data, mean)
 
         result = np.zeros(shape=masked_data.shape)
         norm_scene = np.zeros(shape=result.shape)
@@ -65,6 +66,8 @@ class LocalNormalization(EOTask):
                 result[time_bin, :, :, freq_bin] = scene - norm
                 norm_scene[time_bin, :, :, freq_bin] = norm
 
+        result = np.where(mask, result, np.nan)
+        norm_scene = np.where(mask, norm_scene, np.nan)
         return np.array(result), np.array(norm_scene), np.invert(np.isnan(result))
 
     def execute(self, eopatch, method='gaussian', window_size=20):
