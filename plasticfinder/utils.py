@@ -101,6 +101,8 @@ def plot_ndvis_fdis(patch_dir):
     patch = EOPatch.load(patch_dir)
     if not np.any(patch.mask["FULL_MASK"]):
         return
+    if not "EMPIRICAL_OUTLIERS" in patch.mask.keys():
+        return
     fig, ax = plot_ndvi_fid_plots(patch)
     fig.savefig(patch_dir / "ndvi_fdi.png")
     plt.close(fig)

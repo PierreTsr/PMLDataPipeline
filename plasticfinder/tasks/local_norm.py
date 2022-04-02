@@ -45,6 +45,7 @@ class LocalNormalization(EOTask):
     def normalize(data, mask, method='gaussian', window_size=20):
         mean = np.mean(data, axis=tuple(range(data.ndim - 1)))
         masked_data = np.where(mask, data, mean)
+        # TODO: check on that part
 
         result = np.zeros(shape=masked_data.shape)
         norm_scene = np.zeros(shape=result.shape)

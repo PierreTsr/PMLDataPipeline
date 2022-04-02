@@ -1,7 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Ellipse
-from plasticfinder.class_deffs import catMap, colors, cols_rgb
 from eolearn.core import LoadTask, FeatureType
 from pathlib import Path
 from scipy.stats import chi2, norm
@@ -114,7 +113,7 @@ def plot_ndvi_fid_plots(patch):
 
     lab_emp = patch.mask["EMPIRICAL_OUTLIERS"].ravel()
     lab_robust = patch.mask["ROBUST_OUTLIERS"].ravel()
-    lab_forest = patch.mask["FOREST_OUTLIERS"].ravel()
+    # lab_forest = patch.mask["FOREST_OUTLIERS"].ravel()
 
     mean_emp = patch.scalar_timeless["EMPIRICAL_MEAN"]
     cov_emp = patch.scalar_timeless["EMPIRICAL_COV"].reshape((5, 5))
@@ -146,13 +145,13 @@ def plot_ndvi_fid_plots(patch):
     axs[axis].set_xlabel(ndvi)
     axs[axis].set_ylabel(fdi)
 
-    idx = [0, 1]
-    axis = 2
-    axs[axis].scatter(patch.data[ndvi].ravel()[mask], patch.data[fdi].ravel()[mask], s=1.0,
-                      c=lab_forest[mask],
-                      cmap="bwr")
-    axs[axis].set_xlabel(ndvi)
-    axs[axis].set_ylabel(fdi)
+    # idx = [0, 1]
+    # axis = 2
+    # axs[axis].scatter(patch.data[ndvi].ravel()[mask], patch.data[fdi].ravel()[mask], s=1.0,
+    #                   c=lab_forest[mask],
+    #                   cmap="bwr")
+    # axs[axis].set_xlabel(ndvi)
+    # axs[axis].set_ylabel(fdi)
 
     # idx = [2, 3]
     # axis = 3
@@ -196,9 +195,9 @@ def plot_ndvi_fid_plots(patch):
     axs[axis].set_title("Robust Detection")
     axs[axis].imshow(lab_robust.reshape((dim1, dim2)))
 
-    axis = 8
-    axs[axis].set_title("Forest Detection")
-    axs[axis].imshow(lab_forest.reshape((dim1, dim2)))
+    # axis = 8
+    # axs[axis].set_title("Forest Detection")
+    # axs[axis].imshow(lab_forest.reshape((dim1, dim2)))
 
     plt.tight_layout()
     return fig, axs

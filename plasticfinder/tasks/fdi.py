@@ -72,6 +72,7 @@ class CalcFDI(EOTask):
         swir = bands[:, :, :, SWIR]
 
         fdi = self.FDI(nir, re, swir).reshape([bands.shape[0], bands.shape[1], bands.shape[2], 1])
+        fdi = np.where(np.invert(eopatch.mask["IS_DATA"]), fdi, np.nan)
 
         eopatch = self.add_feature(eopatch, fdi)
         return eopatch
