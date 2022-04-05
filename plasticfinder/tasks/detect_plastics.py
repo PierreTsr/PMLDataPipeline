@@ -1,33 +1,22 @@
-from joblib import load
-from eolearn.core import EOTask, FeatureType, AddFeatureTask
-from sklearn.cluster import DBSCAN, SpectralClustering, AgglomerativeClustering, KMeans
-
 import numpy as np
+from eolearn.core import EOTask, FeatureType, AddFeatureTask
+from joblib import load
+from sklearn.cluster import AgglomerativeClustering
 
-FEATURES = {
-    "fdi": "NORM_FDI",
-    "ndvi": "NORM_NDVI",
-    "bands": ["B06", "B07", "B11"]
-}
-
-BAND_NAMES = ['B01', 'B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B08A', 'B09', 'B10', 'B11', 'B12']
-
-
-def get_feature_names():
-    return [FEATURES["fdi"], FEATURES["ndvi"]] + FEATURES["bands"]
+from src.outliers_pipeline.plasticfinder.utils import FEATURES
 
 
 def get_features(eopatch, band_layer, band_names):
     ndvi = eopatch.data[FEATURES["ndvi"]]
     fdi = eopatch.data[FEATURES["fdi"]]
 
-    bands = eopatch.data[band_layer]
-    bands = [bands[:, :, :, band_names.index(band)].reshape(ndvi.shape[1], ndvi.shape[2]) for band in FEATURES["bands"]]
+    # bands = eopatch.data[band_layer]
+    # bands = [bands[:, :, :, band_names.index(band)].reshape(ndvi.shape[1], ndvi.shape[2]) for band in FEATURES["bands"]]
 
     features = np.dstack([
         ndvi.reshape(ndvi.shape[1], ndvi.shape[2]),
         fdi.reshape(ndvi.shape[1], ndvi.shape[2]),
-        *bands
+        # *bands
     ])
     return features, ndvi.shape
 

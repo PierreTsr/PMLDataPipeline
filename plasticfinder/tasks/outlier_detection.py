@@ -9,12 +9,12 @@ from scipy.stats import chi2
 class OutlierDetection(EOTask):
     def __init__(self):
         self.mcd = MinCovDet(store_precision=False, assume_centered=True)
-        self.forest = IsolationForest(n_estimators=100, contamination=5e-3, n_jobs=1)
+        self.forest = IsolationForest(n_estimators=100, contamination=1e-2, n_jobs=1)
         self.add_empirical = AddFeatureTask((FeatureType.MASK, "EMPIRICAL_OUTLIERS"))
         self.add_robust = AddFeatureTask((FeatureType.MASK, "ROBUST_OUTLIERS"))
         self.add_robust_mean = AddFeatureTask((FeatureType.SCALAR_TIMELESS, "ROBUST_MEAN"))
         self.add_robust_cov = AddFeatureTask((FeatureType.SCALAR_TIMELESS, "ROBUST_COV"))
-        # self.add_forest = AddFeatureTask((FeatureType.MASK, "FOREST_OUTLIERS"))
+        self.add_forest = AddFeatureTask((FeatureType.MASK, "FOREST_OUTLIERS"))
 
     def get_masked_features(self, eopatch):
         features = eopatch.data["FEATURES"]
@@ -39,7 +39,7 @@ class OutlierDetection(EOTask):
         cov = eopatch.scalar_timeless["EMPIRICAL_COV"].reshape((k, k))
 
         t = np.sum((features - mean) * np.dot(np.linalg.inv(cov), (features - mean).T).T, axis=1)
-        outliers = t > chi2.ppf(1 - 1e-6, k)
+        outliers = t > chi2.ppf(1 - 1e-7, k)
         outliers = self.reshape_features(eopatch, outliers, False)
 
         return outliers
@@ -51,14 +51,14 @@ class OutlierDetection(EOTask):
         cov = mcd.covariance_
 
         t = np.sum((features - mean) * np.dot(np.linalg.inv(cov), (features - mean).T).T, axis=1)
-        outliers = t > chi2.ppf(1 - 1e-6, k)
+        outliers = t > chi2.ppf(1 - 1e-7, k)
         outliers = self.reshape_features(eopatch, outliers, False)
         return outliers
 
-    # def isolation_forest(self, eopatch, features):
-    #     outliers = self.forest.fit_predict(features) == -1
-    #     outliers = self.reshape_features(eopatch, outliers, False)
-    #     return outliers
+    def isolation_forest(self, eopatch, features):
+        outliers = self.forest.fit_predict(features) == -1
+        outliers = self.reshape_features(eopatch, outliers, False)
+        return outliers
 
     def execute(self, eopatch, **kwargs):
         k = eopatch.data["FEATURES"].shape[-1]
@@ -69,18 +69,18 @@ class OutlierDetection(EOTask):
             eopatch = self.add_robust(eopatch, np.zeros(mask.shape, dtype=np.bool))
             eopatch = self.add_robust_mean(eopatch, np.zeros((k,), dtype=np.bool))
             eopatch = self.add_robust_cov(eopatch, np.zeros((k,k), dtype=np.bool).flatten())
-            # eopatch = self.add_forest(eopatch, np.zeros(mask.shape, dtype=np.bool))
+            eopatch = self.add_forest(eopatch, np.zeros(mask.shape, dtype=np.bool))
 
         else:
             empirical = self.global_covariance(eopatch, features)
             robust = self.local_covariance(eopatch, features)
-            # forest = self.isolation_forest(eopatch, features)
+            forest = self.isolation_forest(eopatch, features)
 
             eopatch = self.add_empirical(eopatch, empirical)
             eopatch = self.add_robust(eopatch, robust)
             eopatch = self.add_robust_mean(eopatch, self.mcd.location_)
             eopatch = self.add_robust_cov(eopatch, self.mcd.covariance_.flatten())
-            # eopatch = self.add_forest(eopatch, forest)
+            eopatch = self.add_forest(eopatch, forest)
 
         return eopatch
 
