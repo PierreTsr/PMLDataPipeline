@@ -55,6 +55,9 @@ class LocalInputTask(EOTask):
         self.name_task = AddFeatureTask((FeatureType.META_INFO, "TILE_NAME"))
         self.gain = 1
 
+        if not Path(self.folder).exists():
+            raise FileNotFoundError("The path specified in the input task does not exist.")
+
     @staticmethod
     def get_timestamp(tile):
         match = re.search("[0-9]{8}T[0-9]{6}", tile)[0]
@@ -94,7 +97,8 @@ class LocalInputTask(EOTask):
         tile = kwargs["tile"]
 
         s = "*" + tile + "*.tif"
-        for path in Path(self.folder).glob(s):
+        files = Path(self.folder).glob(s)
+        for path in files:
             target = eopatch.bbox
             footprint = get_bbox(path)
             if not intersect(target, footprint):
@@ -108,10 +112,10 @@ class LocalInputTask(EOTask):
 
             eopatch = self.load_tile(eopatch, path, tile)
             return eopatch
-        raise NoTileFoundError()
+        raise NoTileFoundError("No matching tile was found during the Input task")
 
 
-local_input_task = LocalInputTask("data/S2_L1C/")
+local_input_task = LocalInputTask("data/S2_L1C/tiff_tiles")
 
 config = SHConfig()
 resolution = 10
