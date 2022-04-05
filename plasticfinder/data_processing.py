@@ -1,12 +1,13 @@
 from multiprocessing import Pool
 
-from eolearn.core import EONode, SaveTask, OverwritePermission, EOWorkflow, LoadTask, EOExecutor, FeatureType
-
+import numpy as np
+from eolearn.core import EONode, SaveTask, OverwritePermission, EOWorkflow, LoadTask, EOExecutor, FeatureType, EOPatch
+from matplotlib import pyplot as plt
 from tqdm import tqdm
 
-from plasticfinder.tasks.outlier_detection import GlobalDistribution, OutlierDetection
-from plasticfinder.utils import NTHREAD, plot_ndvis_fdis, plot_patch, compute_global_distribution_robust, \
-    create_outliers_dataset
+from src.outliers_pipeline.plasticfinder.tasks.outlier_detection import GlobalDistribution, OutlierDetection
+from src.outliers_pipeline.plasticfinder.utils import compute_global_distribution_robust, create_outliers_dataset
+from src.outliers_pipeline.plasticfinder.viz import plot_ndvi_fid_plots, plot_masks_and_vals
 
 
 def post_process_patches(base_dir):
@@ -19,27 +20,27 @@ def post_process_patches(base_dir):
     add_distrib_node = EONode(GlobalDistribution(), inputs=[load_node])
     outliers_detection_node = EONode(OutlierDetection(), inputs=[add_distrib_node])
     save_full_node = EONode(SaveTask(path=full_feature_path,
-                                overwrite_permission=OverwritePermission.ADD_ONLY,
-                                features=[(FeatureType.SCALAR_TIMELESS, "EMPIRICAL_MEAN"),
-                                          (FeatureType.SCALAR_TIMELESS, "EMPIRICAL_COV"),
-                                          (FeatureType.MASK, "EMPIRICAL_OUTLIERS"),
-                                          (FeatureType.MASK, "ROBUST_OUTLIERS"),
-                                          (FeatureType.SCALAR_TIMELESS, "ROBUST_MEAN"),
-                                          (FeatureType.SCALAR_TIMELESS, "ROBUST_COV"),
-                                          # (FeatureType.MASK, "FOREST_OUTLIERS")
-                                          ]),
-                       inputs=[outliers_detection_node])
+                                     overwrite_permission=OverwritePermission.ADD_ONLY,
+                                     features=[(FeatureType.SCALAR_TIMELESS, "EMPIRICAL_MEAN"),
+                                               (FeatureType.SCALAR_TIMELESS, "EMPIRICAL_COV"),
+                                               (FeatureType.MASK, "EMPIRICAL_OUTLIERS"),
+                                               (FeatureType.MASK, "ROBUST_OUTLIERS"),
+                                               (FeatureType.SCALAR_TIMELESS, "ROBUST_MEAN"),
+                                               (FeatureType.SCALAR_TIMELESS, "ROBUST_COV"),
+                                               (FeatureType.MASK, "FOREST_OUTLIERS")
+                                               ]),
+                            inputs=[outliers_detection_node])
     save_partial_node = EONode(SaveTask(path=partial_feature_path,
-                                overwrite_permission=OverwritePermission.ADD_ONLY,
-                                features=[(FeatureType.SCALAR_TIMELESS, "EMPIRICAL_MEAN"),
-                                          (FeatureType.SCALAR_TIMELESS, "EMPIRICAL_COV"),
-                                          (FeatureType.MASK, "EMPIRICAL_OUTLIERS"),
-                                          (FeatureType.MASK, "ROBUST_OUTLIERS"),
-                                          (FeatureType.SCALAR_TIMELESS, "ROBUST_MEAN"),
-                                          (FeatureType.SCALAR_TIMELESS, "ROBUST_COV"),
-                                          # (FeatureType.MASK, "FOREST_OUTLIERS")
-                                          ]),
-                       inputs=[outliers_detection_node])
+                                        overwrite_permission=OverwritePermission.ADD_ONLY,
+                                        features=[(FeatureType.SCALAR_TIMELESS, "EMPIRICAL_MEAN"),
+                                                  (FeatureType.SCALAR_TIMELESS, "EMPIRICAL_COV"),
+                                                  (FeatureType.MASK, "EMPIRICAL_OUTLIERS"),
+                                                  (FeatureType.MASK, "ROBUST_OUTLIERS"),
+                                                  (FeatureType.SCALAR_TIMELESS, "ROBUST_MEAN"),
+                                                  (FeatureType.SCALAR_TIMELESS, "ROBUST_COV"),
+                                                  (FeatureType.MASK, "FOREST_OUTLIERS")
+                                                  ]),
+                               inputs=[outliers_detection_node])
     workflow = EOWorkflow([load_node, add_distrib_node, outliers_detection_node, save_full_node, save_partial_node])
 
     args = [{
@@ -53,7 +54,11 @@ def post_process_patches(base_dir):
     print("Performing outlier detection")
     executor.run(workers=8)
     print("Creating outlier dataset")
-    create_outliers_dataset(base_dir)
+    create_outliers_dataset(base_dir, key=[
+        "ROBUST_OUTLIERS",
+        "EMPIRICAL_OUTLIERS",
+        "FOREST_OUTLIERS"
+    ])
 
 
 def pre_processing_visualizations(base_dir):
@@ -74,3 +79,21 @@ def post_processing_visualizations(base_dir):
     print("Plotting outlier identification visualizations:")
     for _ in tqdm(pool.imap_unordered(plot_ndvis_fdis, args), total=len(args)):
         pass
+
+
+def plot_ndvis_fdis(patch_dir):
+    patch = EOPatch.load(patch_dir)
+    if not np.any(patch.mask["FULL_MASK"]):
+        return
+    if not "EMPIRICAL_OUTLIERS" in patch.mask.keys():
+        return
+    fig, ax = plot_ndvi_fid_plots(patch)
+    fig.savefig(patch_dir / "ndvi_fdi.png")
+    plt.close(fig)
+
+
+def plot_patch(patch_dir):
+    patch = EOPatch.load(patch_dir)
+    fig, ax = plot_masks_and_vals(patch)
+    fig.savefig(patch_dir / "bands.png")
+    plt.close(fig)

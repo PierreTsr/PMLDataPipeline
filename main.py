@@ -19,21 +19,31 @@
 import argparse
 from pathlib import Path
 
-from plasticfinder.data_processing import post_process_patches, post_processing_visualizations, \
+from src.outliers_pipeline.plasticfinder.data_processing import post_process_patches, post_processing_visualizations, \
     pre_processing_visualizations
-from plasticfinder.data_querying import preprocess_tile
+from src.outliers_pipeline.plasticfinder.data_querying import preprocess_tile
+from src.outliers_pipeline.plasticfinder.utils import get_matching_marida_target, create_outliers_dataset
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Script to download a given region and process it in to EOPatches')
     parser.add_argument('--dir', type=str, help='Output directory')
     parser.add_argument('--tile', type=str, help='Name of the S2 L1C tile to process')
+    parser.add_argument('--roi', type=str, required=False, help="Path to a geojson file specifying the ROI")
+    parser.add_argument("-m", action="store_true",
+                        help="if set, queries a ROI based on the corresponding MARIDA target")
 
     args = parser.parse_args()
 
     output_dir = Path(args.dir)
     tile = args.tile
 
-    preprocess_tile(output_dir, tile, patches=(15, 15))
+    roi = args.roi
+    if args.m:
+        target = get_matching_marida_target(tile)
+        roi = Path("data/MARIDA/ROI") / (target + ".geojson")
+
+    preprocess_tile(output_dir, tile, patches=(10, 10), roi=roi)
     pre_processing_visualizations(output_dir / tile)
     post_process_patches(output_dir / tile)
     post_processing_visualizations(output_dir / tile)
+    create_outliers_dataset(output_dir / tile, key=["ROBUST_OUTLIERS", "EMPIRICAL_OUTLIERS", "FOREST_OUTLIERS"])

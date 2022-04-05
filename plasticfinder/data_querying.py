@@ -5,17 +5,18 @@ from eolearn.core import EONode
 from eolearn.core import SaveTask, EOWorkflow, EOExecutor
 from eolearn.core.constants import OverwritePermission
 from shapely.geometry import Polygon
+from itertools import compress
 
-from plasticfinder.tasks.cloud_classifier import get_cloud_classifier_task
-from plasticfinder.tasks.combined_masks import CombineMask
-from plasticfinder.tasks.detect_plastics import ExtractFeatures
-from plasticfinder.tasks.fdi import CalcFDI
-from plasticfinder.tasks.input_tasks import local_input_task
-from plasticfinder.tasks.local_norm import LocalNormalization
-from plasticfinder.tasks.ndvi import get_ndvi_task
-from plasticfinder.tasks.ndwi import get_ndwi_task
-from plasticfinder.tasks.water_detection import WaterDetector
-from plasticfinder.utils import NTHREAD, get_tile_bounding_box
+from src.outliers_pipeline.plasticfinder.tasks.cloud_classifier import get_cloud_classifier_task
+from src.outliers_pipeline.plasticfinder.tasks.combined_masks import CombineMask
+from src.outliers_pipeline.plasticfinder.tasks.detect_plastics import ExtractFeatures
+from src.outliers_pipeline.plasticfinder.tasks.fdi import CalcFDI
+from src.outliers_pipeline.plasticfinder.tasks.input_tasks import local_input_task
+from src.outliers_pipeline.plasticfinder.tasks.local_norm import LocalNormalization
+from src.outliers_pipeline.plasticfinder.tasks.ndvi import get_ndvi_task
+from src.outliers_pipeline.plasticfinder.tasks.ndwi import get_ndwi_task
+from src.outliers_pipeline.plasticfinder.tasks.water_detection import WaterDetector
+from src.outliers_pipeline.plasticfinder.utils import NTHREAD, get_tile_bounding_box, get_valid_bbox
 
 
 def patch_preprocessing_workflow(base_dir):
@@ -54,8 +55,8 @@ def patch_preprocessing_workflow(base_dir):
     ndvi_node = EONode(get_ndvi_task(), inputs=[input_node])
     ndwi_node = EONode(get_ndwi_task(), inputs=[ndvi_node])
     fdi_node = EONode(CalcFDI(), inputs=[ndwi_node])
-    # cloud_node = EONode(get_cloud_classifier_task(), inputs=[fdi_node])
-    water_node = EONode(WaterDetector(), inputs=[fdi_node])
+    cloud_node = EONode(get_cloud_classifier_task(), inputs=[fdi_node])
+    water_node = EONode(WaterDetector(), inputs=[cloud_node])
     mask_node = EONode(CombineMask(), inputs=[water_node])
     norm_node = EONode(LocalNormalization(), inputs=[mask_node])
     extract_node = EONode(ExtractFeatures(), inputs=[norm_node])
@@ -66,7 +67,7 @@ def patch_preprocessing_workflow(base_dir):
              ndvi_node,
              ndwi_node,
              fdi_node,
-             # cloud_node,
+             cloud_node,
              water_node,
              mask_node,
              norm_node,
@@ -86,7 +87,7 @@ def patch_preprocessing_workflow(base_dir):
     return workflow, nodes_with_args
 
 
-def preprocess_tile(base_dir, tile, patches=(15, 15)):
+def preprocess_tile(base_dir, tile, patches=(15, 15), roi=None):
     """
         Defines a workflow that will download and process all EOPatches in a defined region.
 
@@ -128,6 +129,13 @@ def preprocess_tile(base_dir, tile, patches=(15, 15)):
     idxs_y = [y for x in range(patches[0]) for y in range(patches[1])]
     idxs = [y + x * patches[1] for x, y in zip(idxs_x, idxs_y)]
 
+    if roi is not None:
+        valid = get_valid_bbox(bbox_list, roi)
+        bbox_list = list(compress(bbox_list, valid))
+        idxs_x = list(compress(idxs_x, valid))
+        idxs_y = list(compress(idxs_y, valid))
+        idxs = list(compress(idxs, valid))
+
     # Prepare info of selected EOPatches
     gdf = gp.GeoDataFrame({'index': idxs, 'index_x': idxs_x, 'index_y': idxs_y},
                           crs=utm,
@@ -148,7 +156,7 @@ def preprocess_tile(base_dir, tile, patches=(15, 15)):
     args = [{
         nodes["input"]: {"bbox": bbox, "tile": tile},
         nodes["mask"]: {"use_water": True},
-        nodes["norm"]: {"method": "gaussian", "window_size": 30},
+        nodes["norm"]: {"method": "gaussian", "window_size": 15},
         nodes["save_partial"]: {"eopatch_folder": f"feature_{idx}"},
         nodes["save_full"]: {"eopatch_folder": f"feature_{idx}"}
     } for idx, bbox in enumerate(bbox_list)]

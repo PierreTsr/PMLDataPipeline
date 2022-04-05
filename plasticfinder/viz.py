@@ -1,10 +1,12 @@
-import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib.patches import Ellipse
-from eolearn.core import LoadTask, FeatureType
 from pathlib import Path
+
+import matplotlib.pyplot as plt
+import numpy as np
+from eolearn.core import LoadTask, FeatureType
+from matplotlib.patches import Ellipse
 from scipy.stats import chi2, norm
-from plasticfinder.tasks.detect_plastics import FEATURES, BAND_NAMES, get_features
+
+from src.outliers_pipeline.plasticfinder.utils import FEATURES, N_FEATURES
 
 
 def plot_masks_and_vals(patch, points=None, scene=0):
@@ -64,22 +66,25 @@ def plot_masks_and_vals(patch, points=None, scene=0):
     axs[12].set_title("Simple cutoff")
     axs[12].imshow((patch.data['NORM_FDI'][scene, :, :, 0] > 0.005) & (patch.data['NORM_NDVI'][scene, :, :, 0] > 0.1))
 
-    if (points):
-        axs[13].set_title('Points')
-        axs[13].imshow(patch.data['NORM_FDI'][scene, :, :, 0], extent=extent)
-        points.plot(ax=axs[13], markersize=20, color='red')
+    axs[13].set_title('Cloud mask')
+    patch.plot(feature=(FeatureType.MASK, 'CLM_S2C'), axes=axs[13], channels=[0], times=[scene])
 
-    if ("SCENE_CLASSIFICATION" in patch.data):
-        axs[14].set_title("Labels")
-        patch.plot(feature=(FeatureType.DATA, 'SCENE_CLASSIFICATION'), axes=axs[14], channels=[0], times=[scene])
-
-    elif ('CLASSIFICATION' in patch.data):
-        classifications = patch.data['CLASSIFICATION'][scene, :, :, 0]
-
-        p_grid = np.array([cols_rgb[val] for val in classifications.flatten()])
-
-        axs[14].set_title("Labels")
-        axs[14].imshow(p_grid.reshape(classifications.shape[0], classifications.shape[1], 3))
+    # if (points):
+    #     axs[13].set_title('Points')
+    #     axs[13].imshow(patch.data['NORM_FDI'][scene, :, :, 0], extent=extent)
+    #     points.plot(ax=axs[13], markersize=20, color='red')
+    #
+    # if ("SCENE_CLASSIFICATION" in patch.data):
+    #     axs[14].set_title("Labels")
+    #     patch.plot(feature=(FeatureType.DATA, 'SCENE_CLASSIFICATION'), axes=axs[14], channels=[0], times=[scene])
+    #
+    # elif ('CLASSIFICATION' in patch.data):
+    #     classifications = patch.data['CLASSIFICATION'][scene, :, :, 0]
+    #
+    #     p_grid = np.array([cols_rgb[val] for val in classifications.flatten()])
+    #
+    #     axs[14].set_title("Labels")
+    #     axs[14].imshow(p_grid.reshape(classifications.shape[0], classifications.shape[1], 3))
 
     plt.tight_layout()
     return fig, axs
@@ -105,21 +110,21 @@ def plot_ndvi_fid_plots(patch):
 
     fdi = FEATURES["fdi"]
     ndvi = FEATURES["ndvi"]
-    band_1 = FEATURES["bands"][0]
-    band_2 = FEATURES["bands"][1]
-    band_3 = FEATURES["bands"][2]
+    # band_1 = FEATURES["bands"][0]
+    # band_2 = FEATURES["bands"][1]
+    # band_3 = FEATURES["bands"][2]
     _, dim1, dim2, _ = patch.data[fdi].shape
     mask = patch.mask["FULL_MASK"].ravel()
 
     lab_emp = patch.mask["EMPIRICAL_OUTLIERS"].ravel()
     lab_robust = patch.mask["ROBUST_OUTLIERS"].ravel()
-    # lab_forest = patch.mask["FOREST_OUTLIERS"].ravel()
+    lab_forest = patch.mask["FOREST_OUTLIERS"].ravel()
 
     mean_emp = patch.scalar_timeless["EMPIRICAL_MEAN"]
-    cov_emp = patch.scalar_timeless["EMPIRICAL_COV"].reshape((5, 5))
+    cov_emp = patch.scalar_timeless["EMPIRICAL_COV"].reshape((N_FEATURES, N_FEATURES))
 
     mean_robust = patch.scalar_timeless["ROBUST_MEAN"]
-    cov_robust = patch.scalar_timeless["ROBUST_COV"].reshape((5, 5))
+    cov_robust = patch.scalar_timeless["ROBUST_COV"].reshape((N_FEATURES, N_FEATURES))
 
 
 
@@ -145,13 +150,13 @@ def plot_ndvi_fid_plots(patch):
     axs[axis].set_xlabel(ndvi)
     axs[axis].set_ylabel(fdi)
 
-    # idx = [0, 1]
-    # axis = 2
-    # axs[axis].scatter(patch.data[ndvi].ravel()[mask], patch.data[fdi].ravel()[mask], s=1.0,
-    #                   c=lab_forest[mask],
-    #                   cmap="bwr")
-    # axs[axis].set_xlabel(ndvi)
-    # axs[axis].set_ylabel(fdi)
+    idx = [0, 1]
+    axis = 2
+    axs[axis].scatter(patch.data[ndvi].ravel()[mask], patch.data[fdi].ravel()[mask], s=1.0,
+                      c=lab_forest[mask],
+                      cmap="bwr")
+    axs[axis].set_xlabel(ndvi)
+    axs[axis].set_ylabel(fdi)
 
     # idx = [2, 3]
     # axis = 3
@@ -159,7 +164,7 @@ def plot_ndvi_fid_plots(patch):
     # band_idx_2 = BAND_NAMES.index(band_2)
     # ells = confidence_ellipse(mean_robust[idx], cov_robust[np.ix_(idx, idx)], t_stats_2)
     # axs[axis].scatter(patch.data['NORM_BANDS'][:, :, :, band_idx_1].ravel()[mask],
-    #                   patch.data['NORM_BANDS'][:, :, :, band_idx_2].ravel()[mask], s=1.0, c=lab_robust, cmap="bwr")
+    #                   patch.data['NORM_BANDS'][:, :, :, band_idx_2].ravel()[mask], s=1.0, c=lab_robust[mask], cmap="bwr")
     # for ell in ells:
     #     axs[axis].add_artist(ell)
     # axs[axis].set_xlabel(ndvi)
@@ -195,9 +200,9 @@ def plot_ndvi_fid_plots(patch):
     axs[axis].set_title("Robust Detection")
     axs[axis].imshow(lab_robust.reshape((dim1, dim2)))
 
-    # axis = 8
-    # axs[axis].set_title("Forest Detection")
-    # axs[axis].imshow(lab_forest.reshape((dim1, dim2)))
+    axis = 8
+    axs[axis].set_title("Forest Detection")
+    axs[axis].imshow(lab_forest.reshape((dim1, dim2)))
 
     plt.tight_layout()
     return fig, axs
