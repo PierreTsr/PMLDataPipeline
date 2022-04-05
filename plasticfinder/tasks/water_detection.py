@@ -2,6 +2,8 @@ from eolearn.core import EOTask, FeatureType, AddFeatureTask
 from scipy.ndimage.filters import gaussian_filter
 import numpy as np
 
+from src.outliers_pipeline.plasticfinder.utils import gaussian_nan_filter
+
 
 class WaterDetector(EOTask):
     """
@@ -23,8 +25,8 @@ class WaterDetector(EOTask):
     def detect_water(ndwi, threshold):
         return ndwi > threshold
 
-    def execute(self, eopatch, sigma=10, threshold=0.2):
-        subsampled_ndwis = np.asarray([gaussian_filter(ndwi, sigma=sigma) for ndwi in eopatch.data["NDWI"]])
+    def execute(self, eopatch, sigma=5, threshold=0.2):
+        subsampled_ndwis = np.asarray([gaussian_nan_filter(ndwi, sigma=sigma) for ndwi in eopatch.data["NDWI"]])
         water_masks = self.detect_water(subsampled_ndwis, threshold)
         eopatch = self.add_feature(eopatch, water_masks.reshape(
             [water_masks.shape[0], water_masks.shape[1], water_masks.shape[2], 1]))

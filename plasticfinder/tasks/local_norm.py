@@ -3,6 +3,8 @@ from skimage.filters.rank import mean, median
 from eolearn.core import EOTask, FeatureType, AddFeatureTask
 import numpy as np
 
+from src.outliers_pipeline.plasticfinder.utils import gaussian_nan_filter
+
 
 class LocalNormalization(EOTask):
     """
@@ -26,6 +28,7 @@ class LocalNormalization(EOTask):
             - method: the normalization method, one of min,median,mean
             - window_size: the window over which to perform the normalization in pixels
     """
+
     def __init__(self):
         self.add_norm_fdi = AddFeatureTask((FeatureType.DATA, "NORM_FDI"))
         self.add_norm_ndvi = AddFeatureTask((FeatureType.DATA, "NORM_NDVI"))
@@ -40,20 +43,20 @@ class LocalNormalization(EOTask):
         self.add_norm_bands = AddFeatureTask((FeatureType.DATA, "NORM_BANDS"))
         self.add_mean_bands = AddFeatureTask((FeatureType.DATA, "MEAN_BANDS"))
 
-
     @staticmethod
     def normalize(data, mask, method='gaussian', window_size=20):
-        mean = np.mean(data, axis=tuple(range(data.ndim - 1)))
-        masked_data = np.where(mask, data, mean)
-        # TODO: check on that part
+        # mean = np.nanmean(data, axis=tuple(range(data.ndim - 1)))
+        # idx = np.argwhere(mask[:, :, :, 0])
+        # data = data.copy()
+        # data[idx[:, 0], idx[:, 1], idx[:, 2], :] = mean
 
-        result = np.zeros(shape=masked_data.shape)
+        result = np.zeros(shape=data.shape)
         norm_scene = np.zeros(shape=result.shape)
 
         for time_bin in range(data.shape[0]):
             for freq_bin in range(data.shape[3]):
 
-                scene = masked_data[time_bin, :, :, freq_bin]
+                scene = data[time_bin, :, :, freq_bin]
                 if (method == 'mean'):
                     norm = generic_filter(scene, np.nanmean, size=window_size)
                 elif (method == 'median'):
@@ -61,19 +64,19 @@ class LocalNormalization(EOTask):
                 elif (method == 'min'):
                     norm = minimum_filter(scene, size=window_size)
                 elif (method == "gaussian"):
-                    norm = gaussian_filter(scene, sigma=window_size)
+                    norm = gaussian_nan_filter(scene, sigma=window_size)
                 else:
                     raise Exception("Method needs to be either mean, median or min")
                 result[time_bin, :, :, freq_bin] = scene - norm
                 norm_scene[time_bin, :, :, freq_bin] = norm
 
-        result = np.where(mask, result, np.nan)
-        norm_scene = np.where(mask, norm_scene, np.nan)
+        result = np.where(np.invert(mask), result, np.nan)
+        norm_scene = np.where(np.invert(mask), norm_scene, np.nan)
         return np.array(result), np.array(norm_scene), np.invert(np.isnan(result))
 
     def execute(self, eopatch, method='gaussian', window_size=20):
-        valid_mask = eopatch.mask['FULL_MASK']
-        if np.all(np.invert(valid_mask)):
+        invalid_mask = np.invert(eopatch.mask['FULL_MASK'])
+        if np.all(invalid_mask):
             eopatch = self.add_norm_fdi(eopatch, np.zeros(eopatch.data['FDI'].shape))
             eopatch = self.add_norm_ndvi(eopatch, np.zeros(eopatch.data['NDVI'].shape))
             eopatch = self.add_mean_fdi(eopatch, np.zeros(eopatch.data['FDI'].shape))
@@ -81,10 +84,13 @@ class LocalNormalization(EOTask):
             eopatch = self.add_norm_bands(eopatch, np.zeros(eopatch.data['BANDS-S2-L1C'].shape))
             eopatch = self.add_mean_bands(eopatch, np.zeros(eopatch.data['BANDS-S2-L1C'].shape))
         else:
-            normed_ndvi, m_ndvi, mask = LocalNormalization.normalize(eopatch.data['NDVI'], valid_mask, method=method, window_size=window_size)
+            normed_ndvi, m_ndvi, mask = LocalNormalization.normalize(eopatch.data['NDVI'], invalid_mask, method=method,
+                                                                     window_size=window_size)
 
-            normed_fdi, m_fdi, _ = LocalNormalization.normalize(eopatch.data['FDI'], valid_mask, method=method, window_size=window_size)
-            normed_bands, m_bands, _ = LocalNormalization.normalize(eopatch.data['BANDS-S2-L1C'], valid_mask, method=method, window_size=window_size)
+            normed_fdi, m_fdi, _ = LocalNormalization.normalize(eopatch.data['FDI'], invalid_mask, method=method,
+                                                                window_size=window_size)
+            normed_bands, m_bands, _ = LocalNormalization.normalize(eopatch.data['BANDS-S2-L1C'], invalid_mask,
+                                                                    method=method, window_size=window_size)
 
             eopatch = self.add_norm_fdi(eopatch, normed_fdi)
             eopatch = self.add_norm_ndvi(eopatch, normed_ndvi)
