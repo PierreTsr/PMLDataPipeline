@@ -10,10 +10,10 @@ class OutlierDetection(EOTask):
     def __init__(self):
         self.mcd = MinCovDet(store_precision=False, assume_centered=True)
         self.forest = IsolationForest(n_estimators=100, contamination=1e-2, n_jobs=1)
-        self.add_empirical = AddFeatureTask((FeatureType.MASK, "EMPIRICAL_OUTLIERS"))
-        self.add_robust = AddFeatureTask((FeatureType.MASK, "ROBUST_OUTLIERS"))
-        self.add_robust_mean = AddFeatureTask((FeatureType.SCALAR_TIMELESS, "ROBUST_MEAN"))
-        self.add_robust_cov = AddFeatureTask((FeatureType.SCALAR_TIMELESS, "ROBUST_COV"))
+        self.add_empirical = AddFeatureTask((FeatureType.MASK, "GLOBAL_OUTLIERS"))
+        self.add_robust = AddFeatureTask((FeatureType.MASK, "LOCAL_OUTLIERS"))
+        self.add_robust_mean = AddFeatureTask((FeatureType.SCALAR_TIMELESS, "LOCAL_MEAN"))
+        self.add_robust_cov = AddFeatureTask((FeatureType.SCALAR_TIMELESS, "LOCAL_COV"))
         self.add_forest = AddFeatureTask((FeatureType.MASK, "FOREST_OUTLIERS"))
 
     def get_masked_features(self, eopatch):
@@ -34,9 +34,9 @@ class OutlierDetection(EOTask):
         return ext_data.reshape((-1, h, w, 1))
 
     def global_covariance(self, eopatch, features):
-        mean = eopatch.scalar_timeless["EMPIRICAL_MEAN"]
+        mean = eopatch.scalar_timeless["GLOBAL_MEAN"]
         k = mean.shape[0]
-        cov = eopatch.scalar_timeless["EMPIRICAL_COV"].reshape((k, k))
+        cov = eopatch.scalar_timeless["GLOBAL_COV"].reshape((k, k))
 
         t = np.sum((features - mean) * np.dot(np.linalg.inv(cov), (features - mean).T).T, axis=1)
         outliers = t > chi2.ppf(1 - 1e-7, k)
@@ -87,8 +87,8 @@ class OutlierDetection(EOTask):
 
 class GlobalDistribution(EOTask):
     def __init__(self):
-        self.add_mean = AddFeatureTask((FeatureType.SCALAR_TIMELESS, "EMPIRICAL_MEAN"))
-        self.add_cov = AddFeatureTask((FeatureType.SCALAR_TIMELESS, "EMPIRICAL_COV"))
+        self.add_mean = AddFeatureTask((FeatureType.SCALAR_TIMELESS, "GLOBAL_MEAN"))
+        self.add_cov = AddFeatureTask((FeatureType.SCALAR_TIMELESS, "GLOBAL_COV"))
 
     def execute(self, eopatch, distrib):
         mean, cov, _, _ = distrib

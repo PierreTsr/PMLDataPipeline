@@ -84,7 +84,7 @@ def compute_global_distribution_empirical(patch_dir):
     return mean, cov, results.shape[1], 0
 
 
-def create_outliers_dataset(base_dir, key="ROBUST_OUTLIERS", dst="outliers.shp", features=(
+def create_outliers_dataset(base_dir, key="LOCAL_OUTLIERS", dst="outliers.shp", features=(
         "MEAN_BANDS",
         "MEAN_FDI",
         "MEAN_NDVI",

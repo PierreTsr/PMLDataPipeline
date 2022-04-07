@@ -122,15 +122,15 @@ def plot_ndvi_fid_plots(patch):
     _, dim1, dim2, _ = patch.data[fdi].shape
     mask = patch.mask["FULL_MASK"].ravel()
 
-    lab_emp = patch.mask["EMPIRICAL_OUTLIERS"].ravel()
-    lab_robust = patch.mask["ROBUST_OUTLIERS"].ravel()
+    lab_emp = patch.mask["GLOBAL_OUTLIERS"].ravel()
+    lab_robust = patch.mask["LOCAL_OUTLIERS"].ravel()
     lab_forest = patch.mask["FOREST_OUTLIERS"].ravel()
 
-    mean_emp = patch.scalar_timeless["EMPIRICAL_MEAN"]
-    cov_emp = patch.scalar_timeless["EMPIRICAL_COV"].reshape((N_FEATURES, N_FEATURES))
+    mean_emp = patch.scalar_timeless["GLOBAL_MEAN"]
+    cov_emp = patch.scalar_timeless["GLOBAL_COV"].reshape((N_FEATURES, N_FEATURES))
 
-    mean_robust = patch.scalar_timeless["ROBUST_MEAN"]
-    cov_robust = patch.scalar_timeless["ROBUST_COV"].reshape((N_FEATURES, N_FEATURES))
+    mean_robust = patch.scalar_timeless["LOCAL_MEAN"]
+    cov_robust = patch.scalar_timeless["LOCAL_COV"].reshape((N_FEATURES, N_FEATURES))
 
 
 

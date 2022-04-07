@@ -10,7 +10,8 @@ from src.outliers_pipeline.plasticfinder.utils import compute_global_distributio
 from src.outliers_pipeline.plasticfinder.viz import plot_ndvi_fid_plots, plot_masks_and_vals
 
 
-def post_process_patches(base_dir):
+def post_process_patches(base_dir, outliers_keys=("LOCAL_OUTLIERS", "GLOBAL_OUTLIERS", "FOREST_OUTLIERS")):
+
     full_feature_path = base_dir / "full_features"
     partial_feature_path = base_dir / "model_features"
 
@@ -21,23 +22,23 @@ def post_process_patches(base_dir):
     outliers_detection_node = EONode(OutlierDetection(), inputs=[add_distrib_node])
     save_full_node = EONode(SaveTask(path=full_feature_path,
                                      overwrite_permission=OverwritePermission.ADD_ONLY,
-                                     features=[(FeatureType.SCALAR_TIMELESS, "EMPIRICAL_MEAN"),
-                                               (FeatureType.SCALAR_TIMELESS, "EMPIRICAL_COV"),
-                                               (FeatureType.MASK, "EMPIRICAL_OUTLIERS"),
-                                               (FeatureType.MASK, "ROBUST_OUTLIERS"),
-                                               (FeatureType.SCALAR_TIMELESS, "ROBUST_MEAN"),
-                                               (FeatureType.SCALAR_TIMELESS, "ROBUST_COV"),
+                                     features=[(FeatureType.SCALAR_TIMELESS, "GLOBAL_MEAN"),
+                                               (FeatureType.SCALAR_TIMELESS, "GLOBAL_COV"),
+                                               (FeatureType.MASK, "GLOBAL_OUTLIERS"),
+                                               (FeatureType.MASK, "LOCAL_OUTLIERS"),
+                                               (FeatureType.SCALAR_TIMELESS, "LOCAL_MEAN"),
+                                               (FeatureType.SCALAR_TIMELESS, "LOCAL_COV"),
                                                (FeatureType.MASK, "FOREST_OUTLIERS")
                                                ]),
                             inputs=[outliers_detection_node])
     save_partial_node = EONode(SaveTask(path=partial_feature_path,
                                         overwrite_permission=OverwritePermission.ADD_ONLY,
-                                        features=[(FeatureType.SCALAR_TIMELESS, "EMPIRICAL_MEAN"),
-                                                  (FeatureType.SCALAR_TIMELESS, "EMPIRICAL_COV"),
-                                                  (FeatureType.MASK, "EMPIRICAL_OUTLIERS"),
-                                                  (FeatureType.MASK, "ROBUST_OUTLIERS"),
-                                                  (FeatureType.SCALAR_TIMELESS, "ROBUST_MEAN"),
-                                                  (FeatureType.SCALAR_TIMELESS, "ROBUST_COV"),
+                                        features=[(FeatureType.SCALAR_TIMELESS, "GLOBAL_MEAN"),
+                                                  (FeatureType.SCALAR_TIMELESS, "GLOBAL_COV"),
+                                                  (FeatureType.MASK, "GLOBAL_OUTLIERS"),
+                                                  (FeatureType.MASK, "LOCAL_OUTLIERS"),
+                                                  (FeatureType.SCALAR_TIMELESS, "LOCAL_MEAN"),
+                                                  (FeatureType.SCALAR_TIMELESS, "LOCAL_COV"),
                                                   (FeatureType.MASK, "FOREST_OUTLIERS")
                                                   ]),
                                inputs=[outliers_detection_node])
@@ -54,11 +55,7 @@ def post_process_patches(base_dir):
     print("Performing outlier detection")
     executor.run(workers=6)
     print("Creating outlier dataset")
-    gdf = create_outliers_dataset(base_dir, dst="outliers.shp", key=[
-        "ROBUST_OUTLIERS",
-        "EMPIRICAL_OUTLIERS",
-        "FOREST_OUTLIERS"
-    ])
+    gdf = create_outliers_dataset(base_dir, dst="outliers.shp", key=outliers_keys)
     return gdf
 
 
@@ -86,7 +83,7 @@ def plot_ndvis_fdis(patch_dir):
     patch = EOPatch.load(patch_dir)
     if not np.any(patch.mask["FULL_MASK"]):
         return
-    if not "EMPIRICAL_OUTLIERS" in patch.mask.keys():
+    if not "GLOBAL_OUTLIERS" in patch.mask.keys():
         return
     fig, ax = plot_ndvi_fid_plots(patch)
     fig.savefig(patch_dir / "ndvi_fdi.png")
