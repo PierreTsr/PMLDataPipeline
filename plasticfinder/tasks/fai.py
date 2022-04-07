@@ -3,8 +3,8 @@ import numpy as np
 
 from src.outliers_pipeline.plasticfinder.utils import BAND_NAMES, DEFAULT_BAND_VALUES
 
-RE = BAND_NAMES.index("B06")
-NIR = BAND_NAMES.index("B08")
+RE = BAND_NAMES.index("B04")
+NIR = BAND_NAMES.index("B08A")
 SWIR = BAND_NAMES.index("B11")
 
 λ_re = DEFAULT_BAND_VALUES[RE]
@@ -12,13 +12,13 @@ SWIR = BAND_NAMES.index("B11")
 λ_swir = DEFAULT_BAND_VALUES[SWIR]
 
 
-class CalcFDI(EOTask):
+class CalcFAI(EOTask):
     """
         EOTask that calculates the floating debris index see https://www.nature.com/articles/s41598-020-62298-z
 
         Expects the EOPatch to have either Sentinel L1C or L2A bands.
 
-        Will append the data layer "FDI" to the EOPatch
+        Will append the data layer "FAI" to the EOPatch
 
         Run time parameters:
             - band_layer(str): the name of the data layer to use for raw Sentinel bands
@@ -26,11 +26,11 @@ class CalcFDI(EOTask):
     """
 
     def __init__(self):
-        self.add_feature = AddFeatureTask((FeatureType.DATA, 'FDI'))
+        self.add_feature = AddFeatureTask((FeatureType.DATA, 'FAI'))
 
     @staticmethod
-    def FDI(NIR, RE, SWIR):
-        factor = (λ_nir - λ_re) / (λ_swir - λ_re) * 10
+    def FAI(NIR, RE, SWIR):
+        factor = (λ_nir - λ_re) / (λ_swir - λ_re)
         return NIR - (RE + (SWIR - RE) * factor)
 
     def execute(self,
@@ -43,8 +43,8 @@ class CalcFDI(EOTask):
         re = bands[:, :, :, RE]
         swir = bands[:, :, :, SWIR]
 
-        fdi = self.FDI(nir, re, swir).reshape([bands.shape[0], bands.shape[1], bands.shape[2], 1])
-        fdi = np.where(eopatch.mask["IS_DATA"], fdi, np.nan)
+        fai = self.FAI(nir, re, swir).reshape([bands.shape[0], bands.shape[1], bands.shape[2], 1])
+        fai = np.where(eopatch.mask["IS_DATA"], fai, np.nan)
 
-        eopatch = self.add_feature(eopatch, fdi)
+        eopatch = self.add_feature(eopatch, fai)
         return eopatch

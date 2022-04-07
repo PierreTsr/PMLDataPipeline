@@ -28,6 +28,24 @@ N_FEATURES = 2
 
 BAND_NAMES = ['B01', 'B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B08A', 'B09', 'B10', 'B11', 'B12']
 
+INDICES = ["FAI", "FDI", "NDMI", "NDVI", "NDWI", "SWI"]
+
+DEFAULT_BAND_VALUES = [
+    443,
+    490,
+    560,
+    665,
+    705,
+    740,
+    783,
+    842,
+    865,
+    940,
+    1375,
+    1610,
+    2190
+]
+
 
 def get_feature_names():
     return [FEATURES["fdi"], FEATURES["ndvi"]]  # + FEATURES["bands"]

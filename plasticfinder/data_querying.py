@@ -10,13 +10,27 @@ from itertools import compress
 from src.outliers_pipeline.plasticfinder.tasks.cloud_classifier import get_cloud_classifier_task
 from src.outliers_pipeline.plasticfinder.tasks.combined_masks import CombineMask
 from src.outliers_pipeline.plasticfinder.tasks.detect_plastics import ExtractFeatures
+from src.outliers_pipeline.plasticfinder.tasks.fai import CalcFAI
 from src.outliers_pipeline.plasticfinder.tasks.fdi import CalcFDI
 from src.outliers_pipeline.plasticfinder.tasks.input_tasks import LocalInputTask
 from src.outliers_pipeline.plasticfinder.tasks.local_norm import LocalNormalization
+from src.outliers_pipeline.plasticfinder.tasks.ndmi import get_ndmi_task
 from src.outliers_pipeline.plasticfinder.tasks.ndvi import get_ndvi_task
+from src.outliers_pipeline.plasticfinder.tasks.ndwi import get_ndwi_task
 from src.outliers_pipeline.plasticfinder.tasks.swi import get_swi_task
 from src.outliers_pipeline.plasticfinder.tasks.water_detection import WaterDetector
-from src.outliers_pipeline.plasticfinder.utils import NTHREAD, get_tile_bounding_box, get_valid_bbox
+from src.outliers_pipeline.plasticfinder.utils import get_tile_bounding_box, get_valid_bbox
+
+
+def indices_workflow(input_node):
+    fai_node = EONode(CalcFAI(), inputs=[input_node])
+    fdi_node = EONode(CalcFDI(), inputs=[fai_node])
+    ndmi_node = EONode(get_ndmi_task(), inputs=[fdi_node])
+    ndvi_node = EONode(get_ndvi_task(), inputs=[ndmi_node])
+    ndwi_node = EONode(get_ndwi_task(), inputs=[ndvi_node])
+    swi_node = EONode(get_swi_task(), inputs=[ndwi_node])
+
+    return swi_node, [fai_node, fdi_node, ndmi_node, ndvi_node, ndwi_node, swi_node]
 
 
 def patch_preprocessing_workflow(base_dir, tiles_dir):
@@ -52,10 +66,8 @@ def patch_preprocessing_workflow(base_dir, tiles_dir):
                             overwrite_permission=OverwritePermission.OVERWRITE_PATCH)
 
     input_node = EONode(LocalInputTask(tiles_dir))
-    ndvi_node = EONode(get_ndvi_task(), inputs=[input_node])
-    swi_node = EONode(get_swi_task(), inputs=[ndvi_node])
-    fdi_node = EONode(CalcFDI(), inputs=[swi_node])
-    cloud_node = EONode(get_cloud_classifier_task(), inputs=[fdi_node])
+    last_idx_node, idx_nodes = indices_workflow(input_node)
+    cloud_node = EONode(get_cloud_classifier_task(), inputs=[last_idx_node])
     water_node = EONode(WaterDetector(), inputs=[cloud_node])
     mask_node = EONode(CombineMask(), inputs=[water_node])
     norm_node = EONode(LocalNormalization(), inputs=[mask_node])
@@ -64,16 +76,13 @@ def patch_preprocessing_workflow(base_dir, tiles_dir):
     save_partial_node = EONode(save_partial, inputs=[extract_node])
 
     nodes = [input_node,
-             ndvi_node,
-             swi_node,
-             fdi_node,
              cloud_node,
              water_node,
              mask_node,
              norm_node,
              extract_node,
              save_full_node,
-             save_partial_node]
+             save_partial_node] + idx_nodes
 
     nodes_with_args = {
         "input": input_node,

@@ -1,9 +1,8 @@
-from scipy.ndimage import median_filter, gaussian_filter, generic_filter, minimum_filter
-from skimage.filters.rank import mean, median
-from eolearn.core import EOTask, FeatureType, AddFeatureTask
 import numpy as np
+from eolearn.core import EOTask, FeatureType, AddFeatureTask
+from scipy.ndimage import median_filter, generic_filter, minimum_filter
 
-from src.outliers_pipeline.plasticfinder.utils import gaussian_nan_filter
+from src.outliers_pipeline.plasticfinder.utils import gaussian_nan_filter, INDICES
 
 
 class LocalNormalization(EOTask):
@@ -30,26 +29,16 @@ class LocalNormalization(EOTask):
     """
 
     def __init__(self):
-        self.add_norm_fdi = AddFeatureTask((FeatureType.DATA, "NORM_FDI"))
-        self.add_norm_ndvi = AddFeatureTask((FeatureType.DATA, "NORM_NDVI"))
-        self.add_mean_fdi = AddFeatureTask((FeatureType.DATA, "MEAN_FDI"))
-        self.add_mean_ndvi = AddFeatureTask((FeatureType.DATA, "MEAN_NDVI"))
-        self.add_norm_bands = AddFeatureTask((FeatureType.DATA, "NORM_BANDS"))
-        self.add_mean_bands = AddFeatureTask((FeatureType.DATA, "MEAN_BANDS"))
-        self.add_norm_fdi = AddFeatureTask((FeatureType.DATA, "NORM_FDI"))
-        self.add_norm_ndvi = AddFeatureTask((FeatureType.DATA, "NORM_NDVI"))
-        self.add_mean_fdi = AddFeatureTask((FeatureType.DATA, "MEAN_FDI"))
-        self.add_mean_ndvi = AddFeatureTask((FeatureType.DATA, "MEAN_NDVI"))
+        self.add_norm_tasks = {}
+        self.add_mean_tasks = {}
+        for idx in INDICES:
+            self.add_norm_tasks[idx] = AddFeatureTask((FeatureType.DATA, "NORM_" + idx))
+            self.add_mean_tasks[idx] = AddFeatureTask((FeatureType.DATA, "MEAN_" + idx))
         self.add_norm_bands = AddFeatureTask((FeatureType.DATA, "NORM_BANDS"))
         self.add_mean_bands = AddFeatureTask((FeatureType.DATA, "MEAN_BANDS"))
 
     @staticmethod
     def normalize(data, mask, method='gaussian', window_size=20):
-        # mean = np.nanmean(data, axis=tuple(range(data.ndim - 1)))
-        # idx = np.argwhere(mask[:, :, :, 0])
-        # data = data.copy()
-        # data[idx[:, 0], idx[:, 1], idx[:, 2], :] = mean
-
         result = np.zeros(shape=data.shape)
         norm_scene = np.zeros(shape=result.shape)
 
@@ -72,30 +61,27 @@ class LocalNormalization(EOTask):
 
         result = np.where(np.invert(mask), result, np.nan)
         norm_scene = np.where(np.invert(mask), norm_scene, np.nan)
-        return np.array(result), np.array(norm_scene), np.invert(np.isnan(result))
+        mask = np.all(np.invert(np.isnan(result)), axis=-1, keepdims=True)
+        return np.array(result), np.array(norm_scene), mask
 
     def execute(self, eopatch, method='gaussian', window_size=20):
         invalid_mask = np.invert(eopatch.mask['FULL_MASK'])
         if np.all(invalid_mask):
-            eopatch = self.add_norm_fdi(eopatch, np.zeros(eopatch.data['FDI'].shape))
-            eopatch = self.add_norm_ndvi(eopatch, np.zeros(eopatch.data['NDVI'].shape))
-            eopatch = self.add_mean_fdi(eopatch, np.zeros(eopatch.data['FDI'].shape))
-            eopatch = self.add_mean_ndvi(eopatch, np.zeros(eopatch.data['NDVI'].shape))
+            for idx in INDICES:
+                eopatch = self.add_norm_tasks[idx](eopatch, np.zeros(eopatch.data[idx].shape))
+                eopatch = self.add_mean_tasks[idx](eopatch, np.zeros(eopatch.data[idx].shape))
+
             eopatch = self.add_norm_bands(eopatch, np.zeros(eopatch.data['BANDS-S2-L1C'].shape))
             eopatch = self.add_mean_bands(eopatch, np.zeros(eopatch.data['BANDS-S2-L1C'].shape))
         else:
-            normed_ndvi, m_ndvi, mask = LocalNormalization.normalize(eopatch.data['NDVI'], invalid_mask, method=method,
-                                                                     window_size=window_size)
+            for idx in INDICES:
+                normed_idx, mean_idx, _ = LocalNormalization.normalize(eopatch.data[idx], invalid_mask,
+                                                                       method=method, window_size=window_size)
+                eopatch = self.add_norm_tasks[idx](eopatch, normed_idx.reshape(eopatch.data[idx].shape))
+                eopatch = self.add_mean_tasks[idx](eopatch, mean_idx.reshape(eopatch.data[idx].shape))
 
-            normed_fdi, m_fdi, _ = LocalNormalization.normalize(eopatch.data['FDI'], invalid_mask, method=method,
-                                                                window_size=window_size)
-            normed_bands, m_bands, _ = LocalNormalization.normalize(eopatch.data['BANDS-S2-L1C'], invalid_mask,
-                                                                    method=method, window_size=window_size)
-
-            eopatch = self.add_norm_fdi(eopatch, normed_fdi)
-            eopatch = self.add_norm_ndvi(eopatch, normed_ndvi)
-            eopatch = self.add_mean_fdi(eopatch, m_fdi.reshape(eopatch.data['NDVI'].shape))
-            eopatch = self.add_mean_ndvi(eopatch, m_ndvi.reshape(eopatch.data['NDVI'].shape))
+            normed_bands, m_bands, mask = LocalNormalization.normalize(eopatch.data['BANDS-S2-L1C'], invalid_mask,
+                                                                       method=method, window_size=window_size)
             eopatch = self.add_norm_bands(eopatch, normed_bands.reshape(eopatch.data['BANDS-S2-L1C'].shape))
             eopatch = self.add_mean_bands(eopatch, m_bands.reshape(eopatch.data['BANDS-S2-L1C'].shape))
             eopatch.mask["FULL_MASK"] &= mask

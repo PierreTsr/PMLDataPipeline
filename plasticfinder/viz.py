@@ -24,50 +24,56 @@ def plot_masks_and_vals(patch, points=None, scene=0):
     extent = [patch.bbox.min_x, patch.bbox.max_x, patch.bbox.min_y, patch.bbox.max_y]
 
     ratio = np.abs(patch.bbox.max_x - patch.bbox.min_x) / np.abs(patch.bbox.max_y - patch.bbox.min_y)
-    fig, axs = plt.subplots(3, 5, figsize=(ratio * 10 * 2, 10 * 2))
+    fig, axs = plt.subplots(2, 7, figsize=(ratio * 8 * 2, 8 * 7))
     axs = axs.flatten()
 
     axs[0].set_title("True Color")
     patch.plot(feature=(FeatureType.DATA, "TRUE_COLOR"), axes=axs[0], rgb=[0, 1, 2])
 
-    axs[1].set_title("NDVI")
-    patch.plot(feature=(FeatureType.DATA, 'NDVI'), axes=axs[1], channels=[0], times=[scene])
+    axs[1].set_title("FAI")
+    patch.plot(feature=(FeatureType.DATA, 'FAI'), axes=axs[1], channels=[0], times=[scene])
 
     axs[2].set_title("FDI")
     patch.plot(feature=(FeatureType.DATA, 'FDI'), axes=axs[2], channels=[0], times=[scene])
 
-    axs[3].set_title("SWI")
-    patch.plot(feature=(FeatureType.DATA, 'SWI'), axes=axs[3], channels=[0], times=[scene])
+    axs[3].set_title("NDMI")
+    patch.plot(feature=(FeatureType.DATA, 'NDMI'), axes=axs[3], channels=[0], times=[scene])
 
-    axs[4].set_title("Data Mask")
-    patch.plot(feature=(FeatureType.MASK, 'IS_DATA'), axes=axs[4], channels=[0], times=[scene])
+    axs[4].set_title("NDVI")
+    patch.plot(feature=(FeatureType.DATA, 'NDVI'), axes=axs[4], channels=[0], times=[scene])
 
-    axs[6].set_title("Water Mask")
-    patch.plot(feature=(FeatureType.MASK, 'WATER_MASK'), axes=axs[6], channels=[0], times=[scene])
+    axs[5].set_title("NDWI")
+    patch.plot(feature=(FeatureType.DATA, 'NDWI'), axes=axs[5], channels=[0], times=[scene])
 
-    axs[6].set_title("Water Mask")
-    patch.plot(feature=(FeatureType.MASK, 'WATER_MASK'), axes=axs[6], channels=[0], times=[scene])
+    axs[6].set_title("SWI")
+    patch.plot(feature=(FeatureType.DATA, 'SWI'), axes=axs[6], channels=[0], times=[scene])
 
-    axs[7].set_title("Normed FDI")
-    patch.plot(feature=(FeatureType.DATA, 'NORM_FDI'), axes=axs[7], channels=[0], times=[scene])
+    axs[7].set_title("SWIR composite")
+    patch.plot(feature=(FeatureType.DATA, "SWIR_COMPOSITE"), axes=axs[7], rgb=[0, 1, 2])
 
-    axs[8].set_title("Normed NDVI")
-    patch.plot(feature=(FeatureType.DATA, 'NORM_NDVI'), axes=axs[8], channels=[0], times=[scene])
+    axs[8].set_title("normalized FAI")
+    patch.plot(feature=(FeatureType.DATA, 'NORM_FAI'), axes=axs[8], channels=[0], times=[scene])
 
-    axs[9].set_title("AVG NDVI")
-    patch.plot(feature=(FeatureType.DATA, 'MEAN_NDVI'), axes=axs[9], channels=[0], times=[scene])
+    axs[9].set_title("normalized FDI")
+    patch.plot(feature=(FeatureType.DATA, 'NORM_FDI'), axes=axs[9], channels=[0], times=[scene])
 
-    axs[10].set_title("AVG FDI")
-    patch.plot(feature=(FeatureType.DATA, 'MEAN_FDI'), axes=axs[10], channels=[0], times=[scene])
+    axs[10].set_title("normalized NDMI")
+    patch.plot(feature=(FeatureType.DATA, 'NORM_NDMI'), axes=axs[10], channels=[0], times=[scene])
 
-    axs[11].set_title("Combined mask")
-    patch.plot(feature=(FeatureType.MASK, 'FULL_MASK'), axes=axs[11], channels=[0], times=[scene])
+    axs[11].set_title("normalized NDVI")
+    patch.plot(feature=(FeatureType.DATA, 'NORM_NDVI'), axes=axs[11], channels=[0], times=[scene])
 
-    axs[12].set_title("Simple cutoff")
-    axs[12].imshow((patch.data['NORM_FDI'][scene, :, :, 0] > 0.005) & (patch.data['NORM_NDVI'][scene, :, :, 0] > 0.1))
+    axs[12].set_title("normalized NDWI")
+    patch.plot(feature=(FeatureType.DATA, 'NORM_NDWI'), axes=axs[12], channels=[0], times=[scene])
 
-    axs[13].set_title('Cloud mask')
-    patch.plot(feature=(FeatureType.MASK, 'CLM_S2C'), axes=axs[13], channels=[0], times=[scene])
+    axs[13].set_title("normalized SWI")
+    patch.plot(feature=(FeatureType.DATA, 'NORM_SWI'), axes=axs[13], channels=[0], times=[scene])
+
+    # axs[13].set_title("Data Mask")
+    # patch.plot(feature=(FeatureType.MASK, 'IS_DATA'), axes=axs[13], channels=[0], times=[scene])
+    #
+    # axs[14].set_title("Combined mask")
+    # patch.plot(feature=(FeatureType.MASK, 'FULL_MASK'), axes=axs[14], channels=[0], times=[scene])
 
     # if (points):
     #     axs[13].set_title('Points')
