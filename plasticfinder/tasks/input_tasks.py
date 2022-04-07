@@ -115,8 +115,6 @@ class LocalInputTask(EOTask):
         raise NoTileFoundError("No matching tile was found during the Input task")
 
 
-local_input_task = LocalInputTask("data/S2_L1C/tiff_tiles")
-
 config = SHConfig()
 resolution = 10
 max_cloud_coverage = 0.8

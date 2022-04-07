@@ -21,7 +21,7 @@ from pathlib import Path
 
 from src.outliers_pipeline.plasticfinder.data_processing import post_process_patches, post_processing_visualizations, \
     pre_processing_visualizations
-from src.outliers_pipeline.plasticfinder.data_querying import preprocess_tile
+from src.outliers_pipeline.plasticfinder.data_querying import pre_process_tile
 from src.outliers_pipeline.plasticfinder.utils import get_matching_marida_target, create_outliers_dataset
 
 if __name__ == "__main__":
@@ -42,8 +42,8 @@ if __name__ == "__main__":
         target = get_matching_marida_target(tile)
         roi = Path("data/MARIDA/ROI") / (target + ".geojson")
 
-    preprocess_tile(output_dir, tile, patches=(10, 10), roi=roi)
+    pre_process_tile(output_dir, tile, Path("data/S2_L1C/tiff_tiles"), patches=(10, 10), roi=roi)
     pre_processing_visualizations(output_dir / tile)
     post_process_patches(output_dir / tile)
     post_processing_visualizations(output_dir / tile)
-    create_outliers_dataset(output_dir / tile, key=["ROBUST_OUTLIERS", "EMPIRICAL_OUTLIERS", "FOREST_OUTLIERS"])
+

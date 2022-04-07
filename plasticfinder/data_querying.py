@@ -11,22 +11,22 @@ from src.outliers_pipeline.plasticfinder.tasks.cloud_classifier import get_cloud
 from src.outliers_pipeline.plasticfinder.tasks.combined_masks import CombineMask
 from src.outliers_pipeline.plasticfinder.tasks.detect_plastics import ExtractFeatures
 from src.outliers_pipeline.plasticfinder.tasks.fdi import CalcFDI
-from src.outliers_pipeline.plasticfinder.tasks.input_tasks import local_input_task
+from src.outliers_pipeline.plasticfinder.tasks.input_tasks import LocalInputTask
 from src.outliers_pipeline.plasticfinder.tasks.local_norm import LocalNormalization
 from src.outliers_pipeline.plasticfinder.tasks.ndvi import get_ndvi_task
-from src.outliers_pipeline.plasticfinder.tasks.ndwi import get_ndwi_task
+from src.outliers_pipeline.plasticfinder.tasks.swi import get_swi_task
 from src.outliers_pipeline.plasticfinder.tasks.water_detection import WaterDetector
 from src.outliers_pipeline.plasticfinder.utils import NTHREAD, get_tile_bounding_box, get_valid_bbox
 
 
-def patch_preprocessing_workflow(base_dir):
+def patch_preprocessing_workflow(base_dir, tiles_dir):
     """
         Defines a workflow that will download and process a specific EOPatch.
 
         The pipline has the following steps:
             - Download data
             - Calculate NDVI
-            - Calculate NDWI
+            - Calculate SWI
             - Calculate FDI
             - Add cloud mask
             - Add water mask
@@ -51,10 +51,10 @@ def patch_preprocessing_workflow(base_dir):
     save_partial = SaveTask(path=partial_feature_path,
                             overwrite_permission=OverwritePermission.OVERWRITE_PATCH)
 
-    input_node = EONode(local_input_task)
+    input_node = EONode(LocalInputTask(tiles_dir))
     ndvi_node = EONode(get_ndvi_task(), inputs=[input_node])
-    ndwi_node = EONode(get_ndwi_task(), inputs=[ndvi_node])
-    fdi_node = EONode(CalcFDI(), inputs=[ndwi_node])
+    swi_node = EONode(get_swi_task(), inputs=[ndvi_node])
+    fdi_node = EONode(CalcFDI(), inputs=[swi_node])
     cloud_node = EONode(get_cloud_classifier_task(), inputs=[fdi_node])
     water_node = EONode(WaterDetector(), inputs=[cloud_node])
     mask_node = EONode(CombineMask(), inputs=[water_node])
@@ -65,7 +65,7 @@ def patch_preprocessing_workflow(base_dir):
 
     nodes = [input_node,
              ndvi_node,
-             ndwi_node,
+             swi_node,
              fdi_node,
              cloud_node,
              water_node,
@@ -77,6 +77,7 @@ def patch_preprocessing_workflow(base_dir):
 
     nodes_with_args = {
         "input": input_node,
+        "water": water_node,
         "mask": mask_node,
         "norm": norm_node,
         "save_full": save_full_node,
@@ -87,7 +88,7 @@ def patch_preprocessing_workflow(base_dir):
     return workflow, nodes_with_args
 
 
-def preprocess_tile(base_dir, tile, patches=(15, 15), roi=None):
+def pre_process_tile(base_dir, tile, tiles_dir, patches=(15, 15), roi=None):
     """
         Defines a workflow that will download and process all EOPatches in a defined region.
 
@@ -96,7 +97,7 @@ def preprocess_tile(base_dir, tile, patches=(15, 15), roi=None):
         The pipline has the following steps:
             - Download data
             - Calculate NDVI
-            - Calculate NDWI
+            - Calculate SWI
             - Calculate FDI
             - Add cloud mask
             - Add water mask
@@ -152,9 +153,10 @@ def preprocess_tile(base_dir, tile, patches=(15, 15), roi=None):
     plt.savefig(base_dir / (tile + ".png"))
 
     total = len(bbox_list)
-    workflow, nodes = patch_preprocessing_workflow(base_dir / tile)
+    workflow, nodes = patch_preprocessing_workflow(base_dir / tile, tiles_dir)
     args = [{
         nodes["input"]: {"bbox": bbox, "tile": tile},
+        nodes["water"]: {"sigma": 10, "threshold": 0.15, "buffer": 20},
         nodes["mask"]: {"use_water": True},
         nodes["norm"]: {"method": "gaussian", "window_size": 15},
         nodes["save_partial"]: {"eopatch_folder": f"feature_{idx}"},
