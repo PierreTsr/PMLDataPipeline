@@ -52,13 +52,14 @@ def post_process_patches(base_dir):
 
     executor = EOExecutor(workflow, args)
     print("Performing outlier detection")
-    executor.run(workers=8)
+    executor.run(workers=6)
     print("Creating outlier dataset")
-    create_outliers_dataset(base_dir, key=[
+    gdf = create_outliers_dataset(base_dir, dst="outliers.shp", key=[
         "ROBUST_OUTLIERS",
         "EMPIRICAL_OUTLIERS",
         "FOREST_OUTLIERS"
     ])
+    return gdf
 
 
 def pre_processing_visualizations(base_dir):

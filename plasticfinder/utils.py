@@ -66,10 +66,7 @@ def compute_global_distribution_empirical(patch_dir):
     return mean, cov, results.shape[1], 0
 
 
-def create_outliers_dataset(base_dir, key="ROBUST_OUTLIERS", dst="outliers.shp"):
-    pool = Pool(NTHREAD)
-    print("Collecting patches...")
-    features = [
+def create_outliers_dataset(base_dir, key="ROBUST_OUTLIERS", dst="outliers.shp", features=(
         "MEAN_BANDS",
         "MEAN_FDI",
         "MEAN_NDVI",
@@ -77,12 +74,17 @@ def create_outliers_dataset(base_dir, key="ROBUST_OUTLIERS", dst="outliers.shp")
         "NORM_FDI",
         "NORM_NDVI",
         # "BANDS-S2-L1C"
-    ]
+)):
+    pool = Pool(NTHREAD)
+    print("Collecting patches...")
+
     results = pool.starmap(get_geo_df, [(patch, key, features) for patch in
                                         list((base_dir / "full_features").rglob("feature_*"))])
     results = list(filter(lambda x: x is not None, results))
     gdf = pd.concat(results, ignore_index=True)
+    print("Dataset created. Found {n} outliers. Writing to file...".format(n=gdf.shape[0]))
     gdf.to_file(base_dir / dst)
+    return gdf
 
 
 def get_features(path, mask_key="FULL_MASK"):
