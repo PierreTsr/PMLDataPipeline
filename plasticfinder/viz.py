@@ -36,8 +36,8 @@ def plot_masks_and_vals(patch, points=None, scene=0):
     axs[2].set_title("FDI")
     patch.plot(feature=(FeatureType.DATA, 'FDI'), axes=axs[2], channels=[0], times=[scene])
 
-    axs[3].set_title("NDWI")
-    patch.plot(feature=(FeatureType.DATA, 'NDWI'), axes=axs[3], channels=[0], times=[scene])
+    axs[3].set_title("SWI")
+    patch.plot(feature=(FeatureType.DATA, 'SWI'), axes=axs[3], channels=[0], times=[scene])
 
     axs[4].set_title("Data Mask")
     patch.plot(feature=(FeatureType.MASK, 'IS_DATA'), axes=axs[4], channels=[0], times=[scene])
