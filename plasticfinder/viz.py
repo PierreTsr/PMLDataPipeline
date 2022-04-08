@@ -24,7 +24,7 @@ def plot_masks_and_vals(patch, points=None, scene=0):
     extent = [patch.bbox.min_x, patch.bbox.max_x, patch.bbox.min_y, patch.bbox.max_y]
 
     ratio = np.abs(patch.bbox.max_x - patch.bbox.min_x) / np.abs(patch.bbox.max_y - patch.bbox.min_y)
-    fig, axs = plt.subplots(2, 7, figsize=(ratio * 8 * 2, 8 * 7))
+    fig, axs = plt.subplots(2, 7, figsize=(ratio * 8 * 7, 8 * 2))
     axs = axs.flatten()
 
     axs[0].set_title("True Color")
