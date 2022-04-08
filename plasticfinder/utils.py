@@ -84,15 +84,11 @@ def compute_global_distribution_empirical(patch_dir):
     return mean, cov, results.shape[1], 0
 
 
-def create_outliers_dataset(base_dir, key="LOCAL_OUTLIERS", dst="outliers.shp", features=(
-        "MEAN_BANDS",
-        "MEAN_FDI",
-        "MEAN_NDVI",
-        "NORM_BANDS",
-        "NORM_FDI",
-        "NORM_NDVI",
-        # "BANDS-S2-L1C"
-)):
+def create_outliers_dataset(base_dir, key="LOCAL_OUTLIERS", dst="outliers.shp", features=None):
+    if features is None:
+        features = ["NORM_BANDS", "MEAN_BANDS"]
+        for idx in INDICES:
+            features += ["NORM_" + idx, "MEAN_" + idx]
     pool = Pool(NTHREAD)
     print("Collecting patches...")
 
