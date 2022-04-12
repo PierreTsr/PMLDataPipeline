@@ -52,10 +52,13 @@ def get_feature_names():
 
 
 def compute_global_distribution_robust(patch_dir):
-    pool = Pool(NTHREAD)
+    pool = Pool(8)
     print("Collecting patches...")
     results = pool.map(get_features, list(patch_dir.rglob("feature_*")))
-    results = np.vstack(list(filter(lambda x: x is not None, results)))
+    results = list(filter(lambda x: x is not None, results))
+    if not results:
+        return np.zeros((2,)), np.eye(2), 2, 0
+    results = np.vstack(results)
     print(results.shape)
     if results.shape[0] > 1e6:
         sample = np.random.choice(results.shape[0], int(1e6), replace=False)
@@ -84,6 +87,12 @@ def compute_global_distribution_empirical(patch_dir):
     return mean, cov, results.shape[1], 0
 
 
+def compute_tile_size(patch_dir):
+    pool = Pool(12)
+    results = pool.map(get_size, list(patch_dir.rglob("feature_*")))
+    return sum(results)
+
+
 def create_outliers_dataset(base_dir, key="LOCAL_OUTLIERS", dst="outliers.shp", features=None):
     if features is None:
         features = ["NORM_BANDS", "MEAN_BANDS"]
@@ -95,6 +104,8 @@ def create_outliers_dataset(base_dir, key="LOCAL_OUTLIERS", dst="outliers.shp", 
     results = pool.starmap(get_geo_df, [(patch, key, features) for patch in
                                         list((base_dir / "full_features").rglob("feature_*"))])
     results = list(filter(lambda x: x is not None, results))
+    if not results:
+        return None
     gdf = pd.concat(results, ignore_index=True)
     print("Dataset created. Found {n} outliers. Writing to file...".format(n=gdf.shape[0]))
     gdf.to_file(base_dir / dst)
@@ -109,6 +120,11 @@ def get_features(path, mask_key="FULL_MASK"):
     features = patch.data["FEATURES"]
     features = features.reshape((-1, features.shape[-1]))[mask, :]
     return features
+
+
+def get_size(path, mask_key="FULL_MASK"):
+    patch = EOPatch.load(path, lazy_loading=True)
+    return np.sum(patch.mask[mask_key])
 
 
 def get_geo_df(path, mask_key="FULL_MASK", feature_keys=("FEATURES",)):
