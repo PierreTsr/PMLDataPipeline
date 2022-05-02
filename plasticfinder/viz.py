@@ -21,8 +21,6 @@ def plot_masks_and_vals(patch, points=None, scene=0):
             (fig,axs) : the output figure and the individual plot axis
     """
 
-    extent = [patch.bbox.min_x, patch.bbox.max_x, patch.bbox.min_y, patch.bbox.max_y]
-
     ratio = np.abs(patch.bbox.max_x - patch.bbox.min_x) / np.abs(patch.bbox.max_y - patch.bbox.min_y)
     fig, axs = plt.subplots(2, 7, figsize=(ratio * 8 * 7, 8 * 2))
     axs = axs.flatten()
@@ -69,29 +67,6 @@ def plot_masks_and_vals(patch, points=None, scene=0):
     axs[13].set_title("normalized SWI")
     patch.plot(feature=(FeatureType.DATA, 'NORM_SWI'), axes=axs[13], channels=[0], times=[scene])
 
-    # axs[13].set_title("Data Mask")
-    # patch.plot(feature=(FeatureType.MASK, 'IS_DATA'), axes=axs[13], channels=[0], times=[scene])
-    #
-    # axs[14].set_title("Combined mask")
-    # patch.plot(feature=(FeatureType.MASK, 'FULL_MASK'), axes=axs[14], channels=[0], times=[scene])
-
-    # if (points):
-    #     axs[13].set_title('Points')
-    #     axs[13].imshow(patch.data['NORM_FDI'][scene, :, :, 0], extent=extent)
-    #     points.plot(ax=axs[13], markersize=20, color='red')
-    #
-    # if ("SCENE_CLASSIFICATION" in patch.data):
-    #     axs[14].set_title("Labels")
-    #     patch.plot(feature=(FeatureType.DATA, 'SCENE_CLASSIFICATION'), axes=axs[14], channels=[0], times=[scene])
-    #
-    # elif ('CLASSIFICATION' in patch.data):
-    #     classifications = patch.data['CLASSIFICATION'][scene, :, :, 0]
-    #
-    #     p_grid = np.array([cols_rgb[val] for val in classifications.flatten()])
-    #
-    #     axs[14].set_title("Labels")
-    #     axs[14].imshow(p_grid.reshape(classifications.shape[0], classifications.shape[1], 3))
-
     plt.tight_layout()
     return fig, axs
 
@@ -105,7 +80,7 @@ def plot_ndvi_fid_plots(patch):
         Returns
             (fig,axs) : the output figure and the individual plot axis
     """
-    fig, axs = plt.subplots(3, 3, figsize=(10 * 3, 10 * 3))
+    fig, axs = plt.subplots(3, 3, figsize=(5 * 3, 5 * 3), dpi=200)
     axs = axs.flatten()
 
     if not np.any(patch.mask["FULL_MASK"]):
@@ -122,93 +97,128 @@ def plot_ndvi_fid_plots(patch):
     _, dim1, dim2, _ = patch.data[fdi].shape
     mask = patch.mask["FULL_MASK"].ravel()
 
-    lab_emp = patch.mask["GLOBAL_OUTLIERS"].ravel()
-    lab_robust = patch.mask["LOCAL_OUTLIERS"].ravel()
-    lab_forest = patch.mask["FOREST_OUTLIERS"].ravel()
+    outliers=[]
+    if "GLOBAL_OUTLIERS" in patch.mask.keys():
+        outliers.append("GLOBAL")
+    if "LOCAL_OUTLIERS" in patch.mask.keys():
+        outliers.append("LOCAL")
+    if "FOREST_OUTLIERS" in patch.mask.keys():
+        outliers.append("FOREST")
 
-    mean_emp = patch.scalar_timeless["GLOBAL_MEAN"]
-    cov_emp = patch.scalar_timeless["GLOBAL_COV"].reshape((N_FEATURES, N_FEATURES))
+    if "GLOBAL" in outliers:
+        lab_global = patch.mask["GLOBAL_OUTLIERS"].ravel()
+        mean_global = patch.scalar_timeless["GLOBAL_MEAN"]
+        cov_global = patch.scalar_timeless["GLOBAL_COV"].reshape((N_FEATURES, N_FEATURES))
 
-    mean_robust = patch.scalar_timeless["LOCAL_MEAN"]
-    cov_robust = patch.scalar_timeless["LOCAL_COV"].reshape((N_FEATURES, N_FEATURES))
+    if "LOCAL" in outliers:
+        lab_local = patch.mask["LOCAL_OUTLIERS"].ravel()
+        mean_local = patch.scalar_timeless["LOCAL_MEAN"]
+        cov_local = patch.scalar_timeless["LOCAL_COV"].reshape((N_FEATURES, N_FEATURES))
 
+    if "FOREST" in outliers:
+        lab_forest = patch.mask["FOREST_OUTLIERS"].ravel()
 
+    if "GLOBAL" in outliers:
+        idx = [0, 1]
+        axis = 0
+        ells = confidence_ellipse(mean_global[idx], cov_global[np.ix_(idx, idx)], t_stats_2)
+        axs[axis].scatter(patch.data[ndvi].ravel()[mask], patch.data[fdi].ravel()[mask], s=1.0,
+                          c=lab_global[mask],
+                          alpha=0.2,
+                          cmap="bwr")
+        for ell in ells:
+            axs[axis].add_artist(ell)
+        axs[axis].legend(ells, ["p < {x:1.0e}".format(x=x) for x in levels], title="Confidence level:")
+        axs[axis].set_title("Global MCD outlier estimation")
+        axs[axis].set_xlabel(ndvi)
+        axs[axis].set_ylabel(fdi)
 
-    idx = [0, 1]
-    axis = 0
-    ells = confidence_ellipse(mean_emp[idx], cov_emp[np.ix_(idx, idx)], t_stats_2)
-    axs[axis].scatter(patch.data[ndvi].ravel()[mask], patch.data[fdi].ravel()[mask], s=1.0,
-                      c=lab_emp[mask],
-                      cmap="bwr")
-    for ell in ells:
-        axs[axis].add_artist(ell)
-    axs[axis].set_xlabel(ndvi)
-    axs[axis].set_ylabel(fdi)
+    if "LOCAL" in outliers:
+        idx = [0, 1]
+        axis = 1
+        ells = confidence_ellipse(mean_local[idx], cov_local[np.ix_(idx, idx)], t_stats_2)
+        axs[axis].scatter(patch.data[ndvi].ravel()[mask], patch.data[fdi].ravel()[mask], s=1.0,
+                          alpha=0.2,
+                          c=lab_local[mask],
+                          cmap="bwr")
+        for ell in ells:
+            axs[axis].add_artist(ell)
+        axs[axis].legend(ells, ["p < {x:1.0e}".format(x=x) for x in levels], title="Confidence level:")
+        axs[axis].set_title("Local MCD outlier estimation")
+        axs[axis].set_xlabel(ndvi)
+        axs[axis].set_ylabel(fdi)
 
-    idx = [0, 1]
-    axis = 1
-    ells = confidence_ellipse(mean_robust[idx], cov_robust[np.ix_(idx, idx)], t_stats_2)
-    axs[axis].scatter(patch.data[ndvi].ravel()[mask], patch.data[fdi].ravel()[mask], s=1.0,
-                      c=lab_robust[mask],
-                      cmap="bwr")
-    for ell in ells:
-        axs[axis].add_artist(ell)
-    axs[axis].set_xlabel(ndvi)
-    axs[axis].set_ylabel(fdi)
-
-    idx = [0, 1]
-    axis = 2
-    axs[axis].scatter(patch.data[ndvi].ravel()[mask], patch.data[fdi].ravel()[mask], s=1.0,
-                      c=lab_forest[mask],
-                      cmap="bwr")
-    axs[axis].set_xlabel(ndvi)
-    axs[axis].set_ylabel(fdi)
+    if "FOREST" in outliers:
+        idx = [0, 1]
+        axis = 2
+        axs[axis].scatter(patch.data[ndvi].ravel()[mask], patch.data[fdi].ravel()[mask], s=1.0,
+                          alpha=0.5,
+                          c=lab_forest[mask],
+                          cmap="bwr")
+        axs[axis].set_title("Forest based outlier estimation")
+        axs[axis].set_xlabel(ndvi)
+        axs[axis].set_ylabel(fdi)
 
     # idx = [2, 3]
     # axis = 3
     # band_idx_1 = BAND_NAMES.index(band_1)
     # band_idx_2 = BAND_NAMES.index(band_2)
-    # ells = confidence_ellipse(mean_robust[idx], cov_robust[np.ix_(idx, idx)], t_stats_2)
+    # ells = confidence_ellipse(mean_local[idx], cov_local[np.ix_(idx, idx)], t_stats_2)
     # axs[axis].scatter(patch.data['NORM_BANDS'][:, :, :, band_idx_1].ravel()[mask],
-    #                   patch.data['NORM_BANDS'][:, :, :, band_idx_2].ravel()[mask], s=1.0, c=lab_robust[mask], cmap="bwr")
+    #                   patch.data['NORM_BANDS'][:, :, :, band_idx_2].ravel()[mask], s=1.0, c=lab_local[mask], cmap="bwr")
     # for ell in ells:
     #     axs[axis].add_artist(ell)
     # axs[axis].set_xlabel(ndvi)
     # axs[axis].set_ylabel(fdi)
 
-    range_ = (-0.25, 0.25)
     axis = 4
-    x = np.linspace(*range_, 100)
-    axs[axis].hist(patch.data[ndvi].ravel()[mask], bins=100, range=range_, density=True)
-    axs[axis].plot(x, norm.pdf(x, mean_robust[0], np.sqrt(cov_robust[0, 0])), 'r-')
-    axs[axis].plot(x, norm.pdf(x, mean_emp[0], np.sqrt(cov_emp[0, 0])), 'g-')
+    ndvi_data = patch.data[ndvi].ravel()[mask]
+    range_ = (np.quantile(ndvi_data, 5e-3), np.quantile(ndvi_data, 1-5e-3))
+    x = np.linspace(*range_, 500)
+    axs[axis].hist(ndvi_data, bins=100, range=range_, density=True, alpha=0.6, label="Observations")
+    if "LOCAL" in outliers:
+        axs[axis].plot(x, norm.pdf(x, mean_local[0], np.sqrt(cov_local[0, 0])), 'r-', label="LOCAL")
+    if "GLOBAL" in outliers:
+        axs[axis].plot(x, norm.pdf(x, mean_global[0], np.sqrt(cov_global[0, 0])), 'g-', label="GLOBAL")
+    axs[axis].grid(True, axis="both")
+    axs[axis].legend(title="Marginal distributions")
+    axs[axis].set_title(ndvi + " distribution")
     axs[axis].set_xlabel(ndvi)
-    axs[axis].set_ylabel("count")
+    axs[axis].set_ylabel("Density")
 
-    range_ = (-100, 150)
     axis = 5
-    x = np.linspace(*range_, 100)
-    axs[axis].hist(patch.data[fdi].ravel()[mask], bins=100, range=range_, density=True)
-    axs[axis].plot(x, norm.pdf(x, mean_robust[1], np.sqrt(cov_robust[1, 1])), 'r-')
-    axs[axis].plot(x, norm.pdf(x, mean_emp[1], np.sqrt(cov_emp[1, 1])), 'g-')
+    fdi_data = patch.data[fdi].ravel()[mask]
+    range_ = (np.quantile(fdi_data, 5e-3), np.quantile(fdi_data, 1-5e-3))
+    x = np.linspace(*range_, 500)
+    axs[axis].hist(fdi_data, bins=100, range=range_, density=True, alpha=0.6, label="Observations")
+    if "LOCAL" in outliers:
+        axs[axis].plot(x, norm.pdf(x, mean_local[1], np.sqrt(cov_local[1, 1])), 'r-', label="LOCAL")
+    if "GLOBAL" in outliers:
+        axs[axis].plot(x, norm.pdf(x, mean_global[1], np.sqrt(cov_global[1, 1])), 'g-', label="GLOBAL")
+    axs[axis].grid(True, axis="both")
+    axs[axis].legend(title="Marginal distributions")
+    axs[axis].set_title(fdi + " distribution")
     axs[axis].set_xlabel(fdi)
-    axs[axis].set_ylabel("count")
+    axs[axis].set_ylabel("Density")
 
     axis = 3
     axs[axis].set_title("True Color")
     patch.plot(feature=(FeatureType.DATA, "TRUE_COLOR"), axes=axs[axis], rgb=[0, 1, 2])
 
-    axis = 6
-    axs[axis].set_title("Empirical Detection")
-    axs[axis].imshow(lab_emp.reshape((dim1, dim2)))
+    if "GLOBAL" in outliers:
+        axis = 6
+        axs[axis].set_title("Global Outliers")
+        axs[axis].imshow(lab_global.reshape((dim1, dim2)))
 
-    axis = 7
-    axs[axis].set_title("Robust Detection")
-    axs[axis].imshow(lab_robust.reshape((dim1, dim2)))
+    if "LOCAL" in outliers:
+        axis = 7
+        axs[axis].set_title("Local Outliers")
+        axs[axis].imshow(lab_local.reshape((dim1, dim2)))
 
-    axis = 8
-    axs[axis].set_title("Forest Detection")
-    axs[axis].imshow(lab_forest.reshape((dim1, dim2)))
+    if "FOREST" in outliers:
+        axis = 8
+        axs[axis].set_title("Forest Outliers")
+        axs[axis].imshow(lab_forest.reshape((dim1, dim2)))
 
     plt.tight_layout()
     return fig, axs
@@ -228,56 +238,3 @@ def confidence_ellipse(center, cov, t_stats_2):
         ell.set_facecolor('none')
         ells.append(ell)
     return ells
-
-
-def plot_classifications(patchDir, features=None):
-    ''' Method that will take a given patch plot the results of the model for that patch.
-    
-        Parameters:
-            - patchDir: the directory of the EOPatch to visualize
-            - features: Features, could be the training dataset, to overlay on the scatter plots.
-
-        Returns
-            Nothing. Will create a file called classifications.png in the EOPatch folder.
-    '''
-    patch = LoadTask(path=str(patchDir)).execute()
-    classifcations = patch.data['CLASSIFICATION'][0, :, :, 0]
-    ndvi = patch.data['NDVI'][0, :, :, 0]
-    fdi = patch.data['FDI'][0, :, :, 0]
-    norm_ndvi = patch.data['NORM_NDVI'][0, :, :, 0]
-    norm_fdi = patch.data['NORM_FDI'][0, :, :, 0]
-
-    fig, axs = plt.subplots(nrows=2, ncols=3, figsize=(20, 10))
-    axs = axs.flatten()
-
-    fndvi = norm_ndvi.flatten()
-    ffdi = norm_fdi.flatten()
-    fclassifications = classifcations.flatten()
-    fclassifications[(ffdi < 0.007)] = 0
-
-    p_grid = np.array([cols_rgb[val] for val in fclassifications])
-
-    axs[0].set_title("Labels")
-    axs[0].imshow(p_grid.reshape(classifcations.shape[0], classifcations.shape[1], 3))
-
-    patch.plot(feature=(FeatureType.DATA, 'NDVI'), axes=axs[1], channels=[0], times=[0])
-    axs[1].set_title('NDVI')
-    patch.plot(feature=(FeatureType.DATA, 'FDI'), axes=axs[2], channels=[0], times=[0])
-    axs[2].set_title('FDI')
-
-    for cat in colors.keys():
-        mask = classifcations == cat
-        axs[3].scatter(norm_ndvi[mask].flatten(), norm_fdi[mask].flatten(), c=colors[cat], s=0.5, alpha=0.2)
-        if (features):
-            features.plot.scatter(x='normed_ndvi', y='normed_fdi', ax=axs[3],
-                                  color=features.label.apply(lambda l: colors[catMap[l]]))
-
-    axs[4].imshow(norm_ndvi)
-    axs[4].set_title('Normed NDVI')
-
-    axs[5].imshow(norm_fdi)
-    axs[5].set_title('Normed FDI')
-
-    plt.tight_layout()
-    plt.savefig(Path(patchDir) / 'classifications.png')
-    plt.close(fig)
