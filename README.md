@@ -11,12 +11,12 @@ The main modifications I brought to this pipeline are:
 - Replaced SentinelHub (which is now behind a paywall), by local import of S2 tiles and local functions with S2 tiling files;
 - Fixed many components that were broken (because of errors or compatibility issues);
 - Upgraded the code to the last version of eolearn's API;
-- Made the execution parallelized;
+- Parallelized the execution;
 - Added the outlier identification layer;
 - Provided a better management of the projections;
 - Added new indices;
 - Changed the visualizations;
 
-What remains to be done before this fork being usable:
+What remains to be done for this fork to be usable:
 - Properly document the code;
 - Provide a Quick-Start guide in this README.md;
