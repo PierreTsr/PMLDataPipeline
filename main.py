@@ -31,6 +31,8 @@ if __name__ == "__main__":
     parser.add_argument('--roi', type=str, required=False, help="Path to a geojson file specifying the ROI")
     parser.add_argument("-m", action="store_true",
                         help="if set, queries a ROI based on the corresponding MARIDA target")
+    parser.add_argument("--local", action="store_true", help="if set, compute LOCAL outliers")
+    parser.add_argument("--forest", action="store_true", help="if set, compute FOREST outliers")
 
     args = parser.parse_args()
 
@@ -42,8 +44,14 @@ if __name__ == "__main__":
         target = get_matching_marida_target(tile)
         roi = Path("data/MARIDA/ROI") / (target + ".geojson")
 
+    outliers = ["GLOBAL"]
+    if args.local:
+        outliers.append("LOCAL")
+    if args.forest:
+        outliers.append("FOREST")
+
     pre_process_tile(output_dir, tile, Path("data/S2_L1C/tiff_tiles"), patches=(10, 10), roi=roi)
     pre_processing_visualizations(output_dir / tile)
-    post_process_patches(output_dir / tile)
+    post_process_patches(output_dir / tile, outliers=outliers)
     post_processing_visualizations(output_dir / tile)
 

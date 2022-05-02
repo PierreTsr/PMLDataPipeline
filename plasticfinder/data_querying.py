@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 from eolearn.core import EONode
 from eolearn.core import SaveTask, EOWorkflow, EOExecutor
 from eolearn.core.constants import OverwritePermission
+from requests import HTTPError
 from shapely.geometry import Polygon
 from itertools import compress
 
@@ -158,8 +159,12 @@ def pre_process_tile(base_dir, tile, tiles_dir, patches=(15, 15), roi=None):
         index = row['index']
         ax.text(geo.centroid.x, geo.centroid.y, f'{index}', ha='center', va='center')
 
-    cx.add_basemap(ax=ax, crs=utm)
-    plt.savefig(base_dir / (tile + ".png"))
+    try:
+        cx.add_basemap(ax=ax, crs=utm)
+    except HTTPError:
+        print("Failed to load the matching Open Street Map tile. Ignoring...")
+        pass
+    plt.savefig(base_dir / tile / ("map" + ".png"))
 
     total = len(bbox_list)
     workflow, nodes = patch_preprocessing_workflow(base_dir / tile, tiles_dir)
@@ -170,7 +175,7 @@ def pre_process_tile(base_dir, tile, tiles_dir, patches=(15, 15), roi=None):
         nodes["norm"]: {"method": "gaussian", "window_size": 30},
         nodes["save_partial"]: {"eopatch_folder": f"feature_{idx}"},
         nodes["save_full"]: {"eopatch_folder": f"feature_{idx}"}
-    } for idx, bbox in enumerate(bbox_list)]
+    } for idx, bbox in zip(idxs, bbox_list)]
     executor = EOExecutor(workflow, args)
-    executor.run(workers=1)
+    executor.run(workers=2)
     # The bottleneck here is the hard-drive read speed, so more workers won't speed up the process

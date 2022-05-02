@@ -69,17 +69,18 @@ class LocalInputTask(EOTask):
         with open(os.devnull, "w") as std:
             with redirect_stdout(std):
                 eopatch = self.import_task(eopatch=eopatch, filename=str(filename))
+                eopatch.data["BANDS-S2-L1C"] /= 10000
                 eopatch.timestamp = [self.get_timestamp(tile)]
                 mask = eopatch.data["BANDS-S2-L1C"] != .0
                 mask = np.any(mask, axis=-1, keepdims=True)
                 eopatch = self.mask_task(eopatch, mask)
                 eopatch = self.true_color_task(
                     eopatch,
-                    np.array(eopatch.data["BANDS-S2-L1C"][:, :, :, [3, 2, 1]]*self.gain, dtype=np.float32) / 10000
+                    np.array(eopatch.data["BANDS-S2-L1C"][:, :, :, [3, 2, 1]]*self.gain, dtype=np.float32)
                 )
                 eopatch = self.swir_task(
                     eopatch,
-                    np.array(eopatch.data["BANDS-S2-L1C"][:, :, :, [12, 8, 3]]*self.gain, dtype=np.float32) / 10000
+                    np.array(eopatch.data["BANDS-S2-L1C"][:, :, :, [12, 8, 3]]*self.gain, dtype=np.float32)
                 )
                 eopatch = self.name_task(eopatch, tile)
         return eopatch

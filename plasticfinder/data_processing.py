@@ -10,7 +10,23 @@ from src.outliers_pipeline.plasticfinder.utils import compute_global_distributio
 from src.outliers_pipeline.plasticfinder.viz import plot_ndvi_fid_plots, plot_masks_and_vals
 
 
-def post_process_patches(base_dir, outliers_keys=("LOCAL_OUTLIERS", "GLOBAL_OUTLIERS", "FOREST_OUTLIERS")):
+def post_process_patches(base_dir, outliers=("GLOBAL", "LOCAL", "FOREST")):
+    outliers_keys = [out + "_OUTLIERS" for out in outliers]
+    new_features = [
+        (FeatureType.SCALAR_TIMELESS, "GLOBAL_MEAN"),
+        (FeatureType.SCALAR_TIMELESS, "GLOBAL_COV"),
+        (FeatureType.MASK, "GLOBAL_OUTLIERS")
+    ]
+    if "LOCAL" in outliers:
+        new_features += [
+            (FeatureType.MASK, "LOCAL_OUTLIERS"),
+            (FeatureType.SCALAR_TIMELESS, "LOCAL_MEAN"),
+            (FeatureType.SCALAR_TIMELESS, "LOCAL_COV"),
+        ]
+    if "FOREST" in outliers:
+        new_features.append(
+            (FeatureType.MASK, "FOREST_OUTLIERS")
+        )
 
     full_feature_path = base_dir / "full_features"
     partial_feature_path = base_dir / "model_features"
@@ -22,38 +38,32 @@ def post_process_patches(base_dir, outliers_keys=("LOCAL_OUTLIERS", "GLOBAL_OUTL
     outliers_detection_node = EONode(OutlierDetection(), inputs=[add_distrib_node])
     save_full_node = EONode(SaveTask(path=full_feature_path,
                                      overwrite_permission=OverwritePermission.ADD_ONLY,
-                                     features=[(FeatureType.SCALAR_TIMELESS, "GLOBAL_MEAN"),
-                                               (FeatureType.SCALAR_TIMELESS, "GLOBAL_COV"),
-                                               (FeatureType.MASK, "GLOBAL_OUTLIERS"),
-                                               (FeatureType.MASK, "LOCAL_OUTLIERS"),
-                                               (FeatureType.SCALAR_TIMELESS, "LOCAL_MEAN"),
-                                               (FeatureType.SCALAR_TIMELESS, "LOCAL_COV"),
-                                               (FeatureType.MASK, "FOREST_OUTLIERS")
-                                               ]),
+                                     features=new_features),
                             inputs=[outliers_detection_node])
     save_partial_node = EONode(SaveTask(path=partial_feature_path,
                                         overwrite_permission=OverwritePermission.ADD_ONLY,
-                                        features=[(FeatureType.SCALAR_TIMELESS, "GLOBAL_MEAN"),
-                                                  (FeatureType.SCALAR_TIMELESS, "GLOBAL_COV"),
-                                                  (FeatureType.MASK, "GLOBAL_OUTLIERS"),
-                                                  (FeatureType.MASK, "LOCAL_OUTLIERS"),
-                                                  (FeatureType.SCALAR_TIMELESS, "LOCAL_MEAN"),
-                                                  (FeatureType.SCALAR_TIMELESS, "LOCAL_COV"),
-                                                  (FeatureType.MASK, "FOREST_OUTLIERS")
-                                                  ]),
+                                        features=new_features),
                                inputs=[outliers_detection_node])
-    workflow = EOWorkflow([load_node, add_distrib_node, outliers_detection_node, save_full_node, save_partial_node])
+    workflow = EOWorkflow([
+        load_node,
+        add_distrib_node,
+        outliers_detection_node,
+        save_full_node,
+        save_partial_node
+    ])
 
     args = [{
         load_node: {"eopatch_folder": path.name},
         add_distrib_node: {"distrib": distrib},
+        outliers_detection_node: {"methods": outliers},
         save_full_node: {"eopatch_folder": path.name},
         save_partial_node: {"eopatch_folder": path.name}
     } for path in list(partial_feature_path.rglob("feature_*"))]
 
     executor = EOExecutor(workflow, args)
     print("Performing outlier detection")
-    executor.run(workers=6)
+    executor.run(workers=12)
+
     print("Creating outlier dataset")
     gdf = create_outliers_dataset(base_dir, dst="outliers.shp", key=outliers_keys)
     return gdf
@@ -61,7 +71,7 @@ def post_process_patches(base_dir, outliers_keys=("LOCAL_OUTLIERS", "GLOBAL_OUTL
 
 def pre_processing_visualizations(base_dir):
     full_feature_path = base_dir / "full_features"
-    pool = Pool(14)
+    pool = Pool(6)
 
     args = list(full_feature_path.rglob("feature_*"))
     print("Plotting standard visualizations:")
@@ -71,7 +81,7 @@ def pre_processing_visualizations(base_dir):
 
 def post_processing_visualizations(base_dir):
     full_feature_path = base_dir / "full_features"
-    pool = Pool(14)
+    pool = Pool(6)
 
     args = list(full_feature_path.rglob("feature_*"))
     print("Plotting outlier identification visualizations:")
@@ -80,7 +90,7 @@ def post_processing_visualizations(base_dir):
 
 
 def plot_ndvis_fdis(patch_dir):
-    patch = EOPatch.load(patch_dir)
+    patch = EOPatch.load(patch_dir, lazy_loading=True)
     if not np.any(patch.mask["FULL_MASK"]):
         return
     if not "GLOBAL_OUTLIERS" in patch.mask.keys():
@@ -91,7 +101,7 @@ def plot_ndvis_fdis(patch_dir):
 
 
 def plot_patch(patch_dir):
-    patch = EOPatch.load(patch_dir)
+    patch = EOPatch.load(patch_dir, lazy_loading=True)
     fig, ax = plot_masks_and_vals(patch)
     fig.savefig(patch_dir / "bands.png")
     plt.close(fig)

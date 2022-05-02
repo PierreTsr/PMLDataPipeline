@@ -10,10 +10,10 @@ class OutlierDetection(EOTask):
     def __init__(self):
         self.mcd = MinCovDet(store_precision=False, assume_centered=True)
         self.forest = IsolationForest(n_estimators=100, contamination=1e-2, n_jobs=1)
-        self.add_empirical = AddFeatureTask((FeatureType.MASK, "GLOBAL_OUTLIERS"))
-        self.add_robust = AddFeatureTask((FeatureType.MASK, "LOCAL_OUTLIERS"))
-        self.add_robust_mean = AddFeatureTask((FeatureType.SCALAR_TIMELESS, "LOCAL_MEAN"))
-        self.add_robust_cov = AddFeatureTask((FeatureType.SCALAR_TIMELESS, "LOCAL_COV"))
+        self.add_global = AddFeatureTask((FeatureType.MASK, "GLOBAL_OUTLIERS"))
+        self.add_local = AddFeatureTask((FeatureType.MASK, "LOCAL_OUTLIERS"))
+        self.add_local_mean = AddFeatureTask((FeatureType.SCALAR_TIMELESS, "LOCAL_MEAN"))
+        self.add_local_cov = AddFeatureTask((FeatureType.SCALAR_TIMELESS, "LOCAL_COV"))
         self.add_forest = AddFeatureTask((FeatureType.MASK, "FOREST_OUTLIERS"))
 
     def get_masked_features(self, eopatch):
@@ -45,10 +45,10 @@ class OutlierDetection(EOTask):
         return outliers
 
     def local_covariance(self, eopatch, features):
-        mcd = self.mcd.fit(features)
+        self.mcd.fit(features)
         k = features.shape[-1]
-        mean = mcd.location_
-        cov = mcd.covariance_
+        mean = self.mcd.location_
+        cov = self.mcd.covariance_
 
         t = np.sum((features - mean) * np.dot(np.linalg.inv(cov), (features - mean).T).T, axis=1)
         outliers = t > chi2.ppf(1 - 1e-7, k)
@@ -63,25 +63,30 @@ class OutlierDetection(EOTask):
     def execute(self, eopatch, **kwargs):
         k = eopatch.data["FEATURES"].shape[-1]
         features = self.get_masked_features(eopatch)
-        if features is None:
-            mask = eopatch.mask["FULL_MASK"]
-            eopatch = self.add_empirical(eopatch, np.zeros(mask.shape, dtype=np.bool))
-            eopatch = self.add_robust(eopatch, np.zeros(mask.shape, dtype=np.bool))
-            eopatch = self.add_robust_mean(eopatch, np.zeros((k,), dtype=np.bool))
-            eopatch = self.add_robust_cov(eopatch, np.zeros((k,k), dtype=np.bool).flatten())
-            eopatch = self.add_forest(eopatch, np.zeros(mask.shape, dtype=np.bool))
+        mask = eopatch.mask["FULL_MASK"]
 
-        else:
-            empirical = self.global_covariance(eopatch, features)
-            robust = self.local_covariance(eopatch, features)
-            forest = self.isolation_forest(eopatch, features)
-
-            eopatch = self.add_empirical(eopatch, empirical)
-            eopatch = self.add_robust(eopatch, robust)
-            eopatch = self.add_robust_mean(eopatch, self.mcd.location_)
-            eopatch = self.add_robust_cov(eopatch, self.mcd.covariance_.flatten())
-            eopatch = self.add_forest(eopatch, forest)
-
+        if "GLOBAL" in kwargs["methods"]:
+            if features is None:
+                eopatch = self.add_global(eopatch, np.zeros(mask.shape, dtype=np.bool))
+            else:
+                global_outliers = self.global_covariance(eopatch, features)
+                eopatch = self.add_global(eopatch, global_outliers)
+        if "LOCAL" in kwargs["methods"]:
+            if features is None:
+                eopatch = self.add_local(eopatch, np.zeros(mask.shape, dtype=np.bool))
+                eopatch = self.add_local_mean(eopatch, np.zeros((k,), dtype=np.bool))
+                eopatch = self.add_local_cov(eopatch, np.zeros((k,k), dtype=np.bool).flatten())
+            else:
+                local_outliers = self.local_covariance(eopatch, features)
+                eopatch = self.add_local(eopatch, local_outliers)
+                eopatch = self.add_local_mean(eopatch, self.mcd.location_)
+                eopatch = self.add_local_cov(eopatch, self.mcd.covariance_.flatten())
+        if "FOREST" in kwargs["methods"]:
+            if features is None:
+                eopatch = self.add_forest(eopatch, np.zeros(mask.shape, dtype=np.bool))
+            else:
+                forest_outliers = self.isolation_forest(eopatch, features)
+                eopatch = self.add_forest(eopatch, forest_outliers)
         return eopatch
 
 
